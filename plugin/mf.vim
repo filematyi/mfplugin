@@ -60,8 +60,9 @@ def mf_ai(user_prompt: str) -> None:
     }
     payload={"messages":[{"role":"system","content":[{"type":"text","text":prompt_to_send}]}],"temperature":0.7,"top_p":0.95,"max_tokens":6553}
     data = requests.post(url, headers=headers, json=payload)
-
-    vim.eval(f'setreg("{selected_registry}", "{data.text}")')
+    response = data.json()
+    content = response["choices"][0]["message"]["content"]
+    vim.eval(f'setreg("{selected_registry}", "{content}")')
 EOF
 
 " Expose :Mf command that calls the Python function
