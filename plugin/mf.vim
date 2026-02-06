@@ -53,7 +53,7 @@ def mf_ai(user_prompt: str) -> None:
             break
     url = vim.eval('g:mfplugin_url')
     api_key = vim.eval('g:mfplugin_api_key')
-    promt_to_send = f"User Input: {user_prompt}. Provided snippet: {snippet}"    
+    prompt_to_send = f"User Input: {user_prompt}. Provided snippet: {snippet}"    
     headers = {
 	'Content-Type': 'application/json',
 	'api-key': api_key
