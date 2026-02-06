@@ -7,7 +7,8 @@ endif
 " Define the Python function using Vim's embedded Python 3
 python3 << EOF
 import vim
-import openai
+import requests
+
 
 def mf_hello():
     # Prints in the command line (message area)
@@ -50,8 +51,17 @@ def mf_ai(user_prompt: str) -> None:
             snippet = val
             selected_registry = reg
             break
-    
+    url = vim.eval('g:mfplugin_url')
+    api_key = vim.eval('g:mfplugin_api_key')
+    promt_to_send = f"User Input: {user_prompt}. Provided snippet: {snippet}"    
+    headers = {
+	'Content-Type': 'application/json',
+	'api-key': api_key
+    }
+    payload={"messages":[{"role":"system","content":[{"type":"text","text":prompt_to_send}]}],"temperature":0.7,"top_p":0.95,"max_tokens":6553}
+    data = requests.post(url, headers=headers, json=payload)
 
+    vim.eval(f'setreg("{selected_registry}", "{data.text}")')
 EOF
 
 " Expose :Mf command that calls the Python function
