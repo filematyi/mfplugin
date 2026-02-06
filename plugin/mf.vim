@@ -15,6 +15,7 @@ def mf_hello():
 
 def echo_first5_from_last_copy(parameter: str):
     text = ''
+    selected_registry = None
     for reg in ['0', '"', '+', '*']:
         try:
             val = vim.eval(f'getreg("{reg}")')
@@ -22,14 +23,18 @@ def echo_first5_from_last_copy(parameter: str):
             val = ''
         if isinstance(val, str) and val:
             text = val
+            selected_registry = reg
             break
 
     first5 = text[:5]
 
     # Escape characters that can break :echo
     safe = first5.replace('\\', '\\\\').replace('"', r'\"')
+    printout_string = parameter + " " + safe
+
+    vim.eval(f'setreg("{selected_registry}", "{printout_string}")')
     # Use :echo so it shows in the command area
-    vim.command(f'echo "{parameter + safe}"')
+    vim.command(f'echo "{printout_string}"')
 
 EOF
 
