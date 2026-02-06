@@ -7,6 +7,7 @@ endif
 " Define the Python function using Vim's embedded Python 3
 python3 << EOF
 import vim
+import openai
 
 def mf_hello():
     # Prints in the command line (message area)
@@ -35,6 +36,21 @@ def echo_first5_from_last_copy(parameter: str):
     vim.eval(f'setreg("{selected_registry}", "{printout_string}")')
     # Use :echo so it shows in the command area
     vim.command(f'echo "{printout_string}"')
+
+
+def mf_ai(user_prompt: str) -> None:
+    snippet = ''
+    selected_registry = None
+    for reg in ['0', '"', '+', '*']:
+        try:
+            val = vim.eval(f'getreg("{reg}")')
+        except Exception:
+            val = ''
+        if isinstance(val, str) and val:
+            snippet = val
+            selected_registry = reg
+            break
+    
 
 EOF
 
