@@ -67,5 +67,6 @@ EOF
 " Expose :Mf command that calls the Python function
 command! Mf python3 mf_hello()
 command! -nargs=1 Mfcp python3 echo_first5_from_last_copy(vim.eval('<q-args>'))
+command! -nargs=1 Mfai python3 mf_ai(vim.eval('<q-args>'))
 
 
