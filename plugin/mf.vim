@@ -11,7 +11,30 @@ import vim
 def mf_hello():
     # Prints in the command line (message area)
     vim.command('echo "Hello world"')
+
+
+def echo_first5_from_last_copy():
+    text = ''
+    for reg in ['0', '"', '+', '*']:
+        try:
+            val = vim.eval(f'getreg("{reg}")')
+        except Exception:
+            val = ''
+        if isinstance(val, str) and val:
+            text = val
+            break
+
+    first5 = text[:5]
+
+    # Escape characters that can break :echo
+    safe = first5.replace('\\', '\\\\').replace('"', r'\"')
+    # Use :echo so it shows in the command area
+    vim.command(f'echo "{safe}"')
+
 EOF
 
 " Expose :Mf command that calls the Python function
 command! Mf python3 mf_hello()
+command! Mfcp python3 echo_first5_from_last_copy()
+
+
