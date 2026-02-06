@@ -13,7 +13,7 @@ def mf_hello():
     vim.command('echo "Hello world"')
 
 
-def echo_first5_from_last_copy():
+def echo_first5_from_last_copy(parameter: str):
     text = ''
     for reg in ['0', '"', '+', '*']:
         try:
@@ -29,12 +29,12 @@ def echo_first5_from_last_copy():
     # Escape characters that can break :echo
     safe = first5.replace('\\', '\\\\').replace('"', r'\"')
     # Use :echo so it shows in the command area
-    vim.command(f'echo "{safe}"')
+    vim.command(f'echo "{parameters + safe}"')
 
 EOF
 
 " Expose :Mf command that calls the Python function
 command! Mf python3 mf_hello()
-command! Mfcp python3 echo_first5_from_last_copy()
+command! -nargs=1 Mfcp python3 echo_first5_from_last_copy(vim.eval('<q-args>'))
 
 
