@@ -29,7 +29,7 @@ def echo_first5_from_last_copy(parameter: str):
     # Escape characters that can break :echo
     safe = first5.replace('\\', '\\\\').replace('"', r'\"')
     # Use :echo so it shows in the command area
-    vim.command(f'echo "{parameters + safe}"')
+    vim.command(f'echo "{parameter + safe}"')
 
 EOF
 
