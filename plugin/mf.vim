@@ -69,7 +69,7 @@ def mf_ai(user_prompt: str) -> None:
     response = data.json()
     content = response["choices"][0]["message"]["content"]
     escaped_content = re.escape(content)
-    vim.eval(f'setreg("{selected_registry}", "{escaped_content}")')
+    vim.eval(f'setreg("{selected_registry}", """{escaped_content}""")')
     vim.command('echo "Done!"')
 
 EOF
