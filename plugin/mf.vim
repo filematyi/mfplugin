@@ -53,7 +53,12 @@ def mf_ai(user_prompt: str) -> None:
             break
     url = vim.eval('g:mfplugin_url')
     api_key = vim.eval('g:mfplugin_api_key')
-    prompt_to_send = f"User Input: {user_prompt}. Provided snippet: {snippet}"    
+    prompt_to_send = f"""
+    	You are a python software developer.
+       	You receives User Input as instructions and a snippet what can be used for the newly generated code.
+	The response must contain only the generated python code in a markdown snippet block.
+	tUser Input: {user_prompt}. Provided snippet: {snippet}
+    """    
     headers = {
 	'Content-Type': 'application/json',
 	'api-key': api_key
