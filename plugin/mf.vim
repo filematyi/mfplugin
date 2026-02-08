@@ -69,8 +69,9 @@ def mf_ai(user_prompt: str) -> None:
     response = data.json()
     content = response["choices"][0]["message"]["content"]
     escaped_content = re.escape(content)
-    vim.eval(f'setreg("{selected_registry}", """{escaped_content}""")')
+    # vim.eval(f'setreg("{selected_registry}", """{escaped_content}""")')
     vim.command('echo "Done!"')
+    vim.command("call popup_create(str(" + content+ "), {'line': 5, 'col': 5})")
 
 EOF
 " Expose :Mf command that calls the Python function
@@ -78,3 +79,5 @@ command! Mf python3 mf_hello()
 command! -nargs=1 Mfcp python3 echo_first5_from_last_copy(vim.eval('<q-args>'))
 command! -nargs=1 Mfai python3 mf_ai(vim.eval('<q-args>'))
 
+
+   
