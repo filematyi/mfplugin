@@ -8,6 +8,7 @@ endif
 python3 << EOF
 import vim
 import requests
+import re
 
 
 def mf_hello():
@@ -67,7 +68,8 @@ def mf_ai(user_prompt: str) -> None:
     data = requests.post(url, headers=headers, json=payload)
     response = data.json()
     content = response["choices"][0]["message"]["content"]
-    vim.eval(f'setreg("{selected_registry}", "{content}")')
+    escaped_content = re.escape(content)
+    vim.eval(f'setreg("{selected_registry}", "{escaped_content}")')
     vim.command('echo "Done!"')
 
 EOF
