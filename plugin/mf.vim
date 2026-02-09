@@ -57,7 +57,7 @@ def mf_ai(user_prompt: str) -> None:
     prompt_to_send = f"""
     	You are a python software developer.
        	You receives User Input as instructions and a snippet what can be used for the newly generated code.
-	The response must contain only the generated python code in a markdown snippet block.
+	The response must contain only the generated python code.
 	tUser Input: {user_prompt}. Provided snippet: {snippet}
     """    
     headers = {
@@ -72,7 +72,9 @@ def mf_ai(user_prompt: str) -> None:
 
     vim.eval(f'setreg("{selected_registry}", "{escaped_content}")')
     vim.command('echo "Done!"')
-    # vim.command("call popup_create(str(" + content+ "), {'line': 5, 'col': 5})")
+	
+    vim.command('enew')
+	vim.current.buffer[:] = content.splitlines()
 
 EOF
 " Expose :Mf command that calls the Python function
