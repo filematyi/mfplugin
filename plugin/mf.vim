@@ -68,7 +68,9 @@ def mf_ai(user_prompt: str) -> None:
     data = requests.post(url, headers=headers, json=payload)
     response = data.json()
     content = response["choices"][0]["message"]["content"]
-    vim.eval(f'setreg("{selected_registry}", "{content}")')
+    escaped_content = content.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+
+    vim.eval(f'setreg("{selected_registry}", "{escaped_content}")')
     vim.command('echo "Done!"')
     # vim.command("call popup_create(str(" + content+ "), {'line': 5, 'col': 5})")
 
