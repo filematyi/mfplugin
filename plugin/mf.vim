@@ -75,6 +75,7 @@ def mf_ai(user_prompt: str) -> None:
 	
     vim.command('enew')
     vim.current.buffer[:] = content.splitlines()
+    vim.command('setlocal filetype=python')
 
 EOF
 " Expose :Mf command that calls the Python function
