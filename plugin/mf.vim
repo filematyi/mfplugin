@@ -34,8 +34,6 @@ def _send_llm_call(prompt: str) -> str:
                 ]
             }
         ],
-        "temperature": 0.7,
-        "top_p": 0.95,
         "max_completion_tokens": 6553
     }
     data = requests.post(url, headers=headers, json=payload)
