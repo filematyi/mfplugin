@@ -40,8 +40,11 @@ def _send_llm_call(prompt: str) -> str:
     }
     data = requests.post(url, headers=headers, json=payload)
     response = data.json()
-    return response["choices"][0]["message"]["content"]
-
+    try:
+        return response["choices"][0]["message"]["content"]
+    except Exception as e:
+        print(response)
+        raise e
 
 def _get_registry_text() -> tuple[str, str]:
     snippet = ''
