@@ -9,6 +9,7 @@ python3 << EOF
 import vim
 import requests
 import re
+import os
 
 
 def _send_llm_call(prompt: str) -> str:
@@ -85,7 +86,8 @@ def mf_ai(user_prompt: str) -> None:
 
 def mf_refactor(user_prompt: str) -> None:
     current_path = vim.eval("@%")
-    vim.command(f'echo "hello {current_path}"')
+    files = str(list(os.listdir(".")))
+    vim.command(f'echo "{files}"')
 
 EOF
 " Expose :Mfs command that calls the Python function
