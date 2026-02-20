@@ -85,7 +85,7 @@ def mf_ai(user_prompt: str) -> None:
 
 def mf_refactor(user_prompt: str) -> None:
     current_path = vim.eval("@%")
-    vim.command(f'echo "{current_path}"')
+    vim.command(f'echo "hello {current_path}"')
 
 EOF
 " Expose :Mfs command that calls the Python function
