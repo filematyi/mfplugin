@@ -10,6 +10,9 @@ import vim
 import requests
 import re
 import os
+from pathlib import Path  
+from typing import List, Union  
+     
 
 
 def _send_llm_call(prompt: str) -> str:
@@ -83,11 +86,43 @@ def mf_ai(user_prompt: str) -> None:
     vim.current.buffer[:] = content.splitlines()
     vim.command('setlocal filetype=python')
 
+def _is_hidden(path: Union[str, Path]) -> bool:  
+    p = Path(path)  
+    if p.name.startswith('.'):  
+        return True  
+    if os.name == 'nt':  
+        try:  
+            import ctypes  
+            attrs = ctypes.windll.kernel32.GetFileAttributesW(str(p))  
+            if attrs == -1:  
+                return False  
+            FILE_ATTRIBUTE_HIDDEN = 0x02  
+            return bool(attrs & FILE_ATTRIBUTE_HIDDEN)  
+        except Exception:  
+            return False  
+    return False  
+  
+def _list_files(folder: Union[str, Path], *, follow_symlinks: bool = False) -> List[str]:  
+    root = Path(folder)  
+    if not root.is_dir():  
+        raise NotADirectoryError(f"{root!s} is not a directory")  
+  
+    files: List[str] = []  
+    for entry in root.iterdir():  
+        if _is_hidden(entry):  
+            continue  
+        if entry.is_symlink() and not follow_symlinks:  
+            continue  
+        if entry.is_dir():  
+            files.extend(_list_files(entry, follow_symlinks=follow_symlinks))  
+        elif entry.is_file():  
+            files.append(str(entry))  
+    return files  
 
 def mf_refactor(user_prompt: str) -> None:
-    current_path = vim.eval("@%")
-    files = str(list(os.listdir(".")))
-    vim.command(f'echo "{files}"')
+    # current_path = vim.eval("@%")
+    files = _list_files(".")
+    vim.command(f'echo "{str(files)}"')
 
 EOF
 " Expose :Mfs command that calls the Python function
