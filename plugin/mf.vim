@@ -129,6 +129,7 @@ def _python_filter(files: list) -> list:
 
 def mf_refactor(user_prompt: str) -> None:
     # current_path = vim.eval("@%")
+    folder, user_input = user_prompt.split(" ", 1)
     files = _list_files(".")
     files = _python_filter(files)
     codebase = ""
@@ -147,7 +148,7 @@ def mf_refactor(user_prompt: str) -> None:
             Just provide a list where the first element is the filepath, second element is a markdown snippet block.
             For already existing modules, sow the whole module not just the changes lines.
             For new modules show the whole module.
-	Section user_input: {user_prompt}. Section codebase: {codebase}
+	Section user_input: {user_input}. Section codebase: {codebase}
     """
     content = _send_llm_call(prompt=prompt_to_send)
     escaped_content = content.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
