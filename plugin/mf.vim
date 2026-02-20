@@ -54,6 +54,15 @@ def _get_registry_text() -> tuple[str, str]:
     return (snippet, selected_registry)
 
 
+def mf_chat(user_prompt: str) -> None:
+    content = _send_llm_call(prompt=user_prompt)
+    escaped_content = content.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+
+    vim.command('echo "Done!"')
+    vim.command('enew')
+    vim.current.buffer[:] = content.splitlines()
+
+
 def mf_ai(user_prompt: str) -> None:
     snippet, selected_registry = _get_registry_text()
     
@@ -73,6 +82,13 @@ def mf_ai(user_prompt: str) -> None:
     vim.current.buffer[:] = content.splitlines()
     vim.command('setlocal filetype=python')
 
+
+def mf_refactor(user_prompt: str) -> None:
+    current_path = vim.eval("@%")
+    vim.command(f'echo "{current_path}"')
+
 EOF
 " Expose :Mfs command that calls the Python function
 command! -nargs=1 Mfai python3 mf_ai(vim.eval('<q-args>'))
+command! -nargs=1 Mfch python3 mf_chat(vim.eval('<q-args>'))
+command! -nargs=1 Mfref python3 mf_refactor(vim.eval('<q-args>'))
