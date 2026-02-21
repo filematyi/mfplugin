@@ -164,8 +164,20 @@ def mf_refactor(user_prompt: str) -> None:
     vim.command('setlocal filetype=markdown')
     vim.command('%s/\\n/\r/g')
 
+def mf_create_file(file_path: str) -> None:
+    snippet, selected_registry = _get_registry_text()
+    
+    try:
+        os.makedirs(os.path.dirname(file_path))
+    except:
+        pass
+
+    with open(file_path, "w") as f:
+        f.write(snippet)
+
 EOF
 " Expose :Mfs command that calls the Python function
 command! -nargs=1 Mfai python3 mf_ai(vim.eval('<q-args>'))
 command! -nargs=1 Mfch python3 mf_chat(vim.eval('<q-args>'))
 command! -nargs=1 Mfref python3 mf_refactor(vim.eval('<q-args>'))
+command! -nargs=1 Mfc python3 mf_create_file(vim.eval('<q-args>'))
