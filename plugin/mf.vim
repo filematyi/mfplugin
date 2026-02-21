@@ -161,7 +161,8 @@ def mf_refactor(user_prompt: str) -> None:
     vim.command('echo "Done!"')
     vim.command('enew')
     vim.current.buffer[:] = content.splitlines()
-
+    vim.command('setlocal filetype=markdown')
+    vim.command('%s/\\n/\r/g')
 
 EOF
 " Expose :Mfs command that calls the Python function
