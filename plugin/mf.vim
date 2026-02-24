@@ -63,9 +63,14 @@ def mf_chat(user_prompt: str) -> None:
     content = _send_llm_call(prompt=user_prompt)
     escaped_content = content.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
 
-    vim.command('echo "Done!"')
-    vim.command('enew')
+    # Open a new tab (created at the end) and ensure it's a single full-screen window
+    vim.command('tabnew')
+    vim.command('tabonly')
+
+    # Put the generated content into the new tab's buffer
     vim.current.buffer[:] = content.splitlines()
+
+    vim.command('echo "Done!"')
 
 
 def mf_ai(user_prompt: str) -> None:
