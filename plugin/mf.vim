@@ -12,28 +12,129 @@ import re
 import os
 from pathlib import Path  
 from typing import List, Union  
-     
-
+import time
+from urllib.parse import urlparse, parse_qs
+    
 
 def _send_llm_call(prompt: str) -> str:
-    url = vim.eval('g:mfplugin_url')
-    api_key = vim.eval('g:mfplugin_api_key')
-    model = vim.eval('g:mfplugin_model')
-    headers = {
-	'Content-Type': 'application/json',
-	'Authorization': f'Bearer {api_key}'
-    }
-    payload={
-        "input": prompt,
-        "model": model
-    }
-    data = requests.post(url, headers=headers, json=payload)
-    response = data.json()
+    # basic input validation
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise ValueError("prompt must be a non-empty string")
+
+    # attempt to get vim variables (raises if vim not available)
     try:
-        return response["output"][1]["content"][0]["text"]
+        url = vim.eval('g:mfplugin_url')
+        api_key = vim.eval('g:mfplugin_api_key')
+        model = vim.eval('g:mfplugin_model')
+    except NameError:
+        raise RuntimeError("vim is not available in this environment")
     except Exception as e:
-        print(response)
-        raise e
+        raise RuntimeError(f"Failed to read vim configuration variables: {e}")
+
+    # validate url, api_key and model
+    if not isinstance(url, str) or not url.strip():
+        raise ValueError("g:mfplugin_url must be a non-empty string")
+    if not isinstance(api_key, str) or not api_key.strip():
+        raise ValueError("g:mfplugin_api_key must be a non-empty string")
+    if not isinstance(model, str) or not model.strip():
+        raise ValueError("g:mfplugin_model must be a non-empty string")
+
+    # validate azure openai api-version query param
+    parsed = urlparse(url)
+    qs = parse_qs(parsed.query)
+    api_versions = qs.get("api-version") or qs.get("api_version")  # accept underscore variant just in case
+    expected_version = "2025-04-01-preview"
+    if not api_versions or expected_version not in api_versions:
+        raise ValueError(f"URL must include api-version={expected_version} as a query parameter")
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+    }
+    payload = {
+        "input": prompt,
+        "model": model,
+    }
+
+    max_attempts = 4
+    backoff_base = 1.0
+    timeout_seconds = 30
+
+    last_exception = None
+    last_response_text = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=timeout_seconds)
+            last_response_text = resp.text
+            # handle rate limiting
+            if resp.status_code == 429:
+                retry_after = resp.headers.get("Retry-After")
+                try:
+                    wait = int(retry_after) if retry_after is not None else backoff_base * (2 ** (attempt - 1))
+                except Exception:
+                    wait = backoff_base * (2 ** (attempt - 1))
+                if attempt == max_attempts:
+                    resp.raise_for_status()
+                time.sleep(wait)
+                continue
+            # retry on server errors
+            if 500 <= resp.status_code < 600:
+                if attempt == max_attempts:
+                    resp.raise_for_status()
+                time.sleep(backoff_base * (2 ** (attempt - 1)))
+                continue
+            # for other non-2xx codes, raise to surface the error
+            if not (200 <= resp.status_code < 300):
+                raise requests.HTTPError(f"Unexpected status code: {resp.status_code}; body: {resp.text}")
+
+            # parse JSON
+            try:
+                data = resp.json()
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Response is not valid JSON: {e}; body: {resp.text}")
+
+            # validate expected response structure and extract text
+            # expected: response["output"][1]["content"][0]["text"]
+            try:
+                output = data.get("output")
+                if not isinstance(output, list) or len(output) <= 1:
+                    raise KeyError("missing or malformed 'output' list")
+                item = output[1]
+                if not isinstance(item, dict):
+                    raise KeyError("output[1] is not an object")
+                content = item.get("content")
+                if not isinstance(content, list) or len(content) == 0:
+                    raise KeyError("missing or malformed 'content' list in output[1]")
+                first_content = content[0]
+                if not isinstance(first_content, dict) or "text" not in first_content:
+                    raise KeyError("content[0] missing 'text' field")
+                text = first_content["text"]
+                if not isinstance(text, str):
+                    raise ValueError("extracted text is not a string")
+                return text
+            except Exception as e:
+                # surface the full response to aid debugging
+                raise ValueError(f"Unexpected response structure: {e}; response JSON: {json.dumps(data, ensure_ascii=False)}")
+
+        except requests.RequestException as e:
+            last_exception = e
+            # network error / timeout etc -> retry with backoff
+            if attempt == max_attempts:
+                break
+            time.sleep(backoff_base * (2 ** (attempt - 1)))
+            continue
+        except Exception:
+            # any other exception (parsing/structure), don't retry further
+            raise
+
+    # if we reach here, all retries failed
+    err_msg = "Failed to complete LLM call after retries."
+    if last_exception:
+        raise RuntimeError(f"{err_msg} Last exception: {last_exception}. Last response body: {last_response_text}")
+    else:
+        raise RuntimeError(f"{err_msg} Last response body: {last_response_text}")
+
 
 def _get_registry_text() -> tuple[str, str]:
     snippet = ''
