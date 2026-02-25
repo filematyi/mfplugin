@@ -18,28 +18,19 @@ from typing import List, Union
 def _send_llm_call(prompt: str) -> str:
     url = vim.eval('g:mfplugin_url')
     api_key = vim.eval('g:mfplugin_api_key')
+    model = vim.eval('g:mfplugin_model')
     headers = {
 	'Content-Type': 'application/json',
-	'api-key': api_key
+	'Authorization': f'Bearer {api_key}'
     }
     payload={
-        "messages": [
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": prompt
-                    }
-                ]
-            }
-        ],
-        "max_completion_tokens": 6553
+        "input": prompt,
+        "model": model
     }
     data = requests.post(url, headers=headers, json=payload)
     response = data.json()
     try:
-        return response["choices"][0]["message"]["content"]
+        return response["output"][1]["content"][0]["text"]
     except Exception as e:
         print(response)
         raise e
