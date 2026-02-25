@@ -155,12 +155,8 @@ def mf_chat(user_prompt: str) -> None:
     content = _send_llm_call(prompt=user_prompt)
     escaped_content = content.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
 
-    # Open a new tab (created at the end) and ensure it's a single full-screen window
-    vim.command('tabnew')
-
-    # Put the generated content into the new tab's buffer
+    vim.command('tabnew LLMAnswer')
     vim.current.buffer[:] = content.splitlines()
-
     vim.command('echo "Done!"')
 
 
@@ -178,9 +174,9 @@ def mf_ai(user_prompt: str) -> None:
 
     vim.eval(f'setreg("{selected_registry}", "{escaped_content}")')
     vim.command('echo "Done!"')
-	
-    vim.command('enew')
+	vim.command('tabnew LLMAnswer')
     vim.current.buffer[:] = content.splitlines()
+
     vim.command('setlocal filetype=python')
 
 def _is_hidden(path: Union[str, Path]) -> bool:  
@@ -255,7 +251,7 @@ def mf_refactor(user_prompt: str) -> None:
     content = _send_llm_call(prompt=prompt_to_send)
     escaped_content = content.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
     vim.command('echo "Done!"')
-    vim.command('enew')
+    vim.command('tabnew LLMAnswer')
     vim.current.buffer[:] = content.splitlines()
     vim.command('setlocal filetype=markdown')
     vim.command('%s/\\n/\r/g')
