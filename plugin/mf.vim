@@ -157,7 +157,6 @@ def mf_chat(user_prompt: str) -> None:
 
     # Open a new tab (created at the end) and ensure it's a single full-screen window
     vim.command('tabnew')
-    vim.command('tabonly')
 
     # Put the generated content into the new tab's buffer
     vim.current.buffer[:] = content.splitlines()
