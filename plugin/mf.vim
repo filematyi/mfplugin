@@ -164,17 +164,17 @@ def mf_ai(user_prompt: str) -> None:
     snippet, selected_registry = _get_registry_text()
     
     prompt_to_send = f"""
-    	You are a python software developer.
-       	You receives User Input as instructions and a snippet what can be used for the newly generated code.
-	The response must contain only the generated python code.
-	User Input: {user_prompt}. Provided snippet: {snippet}
+        You are a python software developer.
+           You receives User Input as instructions and a snippet what can be used for the newly generated code.
+    The response must contain only the generated python code.
+    User Input: {user_prompt}. Provided snippet: {snippet}
     """
     content = _send_llm_call(prompt=prompt_to_send)
     escaped_content = content.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
 
     vim.eval(f'setreg("{selected_registry}", "{escaped_content}")')
     vim.command('echo "Done!"')
-	vim.command('tabnew LLMAnswer')
+    vim.command('tabnew LLMAnswer')
     vim.current.buffer[:] = content.splitlines()
 
     vim.command('setlocal filetype=python')
@@ -231,8 +231,8 @@ def mf_refactor(user_prompt: str) -> None:
             codebase += f"======\n{fname}\n=======\n{f.read()}\n========" 
 
     prompt_to_send = f"""
-    	You are a senior software developer.
-       	You receives user_input as instructions and the codebase from a repository with module paths.
+        You are a senior software developer.
+           You receives user_input as instructions and the codebase from a repository with module paths.
         Your jobs are the following:
         1. understand the folder structure and functionalities of the given codebase.
         2. understand the user_input. It can be a new feature request, a bug report or change on the existing codebase
