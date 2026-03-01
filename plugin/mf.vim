@@ -119,6 +119,7 @@ def _send_llm_call(prompt: str) -> str:
 
         except requests.RequestException as e:
             last_exception = e
+            vim.eval('echo "LLM call falied"')
             # network error / timeout etc -> retry with backoff
             if attempt == max_attempts:
                 break
@@ -166,7 +167,6 @@ def mf_ai(user_prompt: str) -> None:
     prompt_to_send = f"""
         You are a python software developer.
            You receives User Input as instructions and a snippet what can be used for the newly generated code.
-    The response must contain only the generated python code.
     User Input: {user_prompt}. Provided snippet: {snippet}
     """
     content = _send_llm_call(prompt=prompt_to_send)
