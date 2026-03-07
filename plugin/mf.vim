@@ -223,7 +223,7 @@ def _python_filter(files: list) -> list:
 def mf_refactor(user_prompt: str) -> None:
     # current_path = vim.eval("@%")
     folder, user_input = user_prompt.split(" ", 1)
-    files = _list_files(".")
+    files = _list_files(folder)
     files = _python_filter(files)
     codebase = ""
     for fname in files:
