@@ -13,6 +13,7 @@ import os
 from pathlib import Path  
 from typing import List, Union  
 import time
+import json
 from urllib.parse import urlparse, parse_qs
     
 
@@ -98,9 +99,9 @@ def _send_llm_call(prompt: str) -> str:
             # expected: response["output"][1]["content"][0]["text"]
             try:
                 output = data.get("output")
-                if not isinstance(output, list) or len(output) <= 1:
+                if not isinstance(output, list) or len(output) < 1:
                     raise KeyError("missing or malformed 'output' list")
-                item = output[1]
+                item = output[1] if len(output) > 1 else output[0]
                 if not isinstance(item, dict):
                     raise KeyError("output[1] is not an object")
                 content = item.get("content")
