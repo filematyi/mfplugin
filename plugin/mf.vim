@@ -268,6 +268,7 @@ def mf_create_file(file_path: str) -> None:
 
     with open(file_path, "w") as f:
         f.write(snippet)
+    vim.command('echo "Done!"')
 
 EOF
 " Expose :Mfs command that calls the Python function
