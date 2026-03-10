@@ -60,7 +60,7 @@ def _send_llm_call(prompt: str) -> str:
 
     max_attempts = 4
     backoff_base = 1.0
-    timeout_seconds = 60
+    timeout_seconds = 120
 
     last_exception = None
     last_response_text = None
