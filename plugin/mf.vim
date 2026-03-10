@@ -44,13 +44,14 @@ def _send_llm_call(prompt: str) -> str:
     parsed = urlparse(url)
     qs = parse_qs(parsed.query)
     api_versions = qs.get("api-version") or qs.get("api_version")  # accept underscore variant just in case
-    expected_version = "2025-04-01-preview"
-    if not api_versions or expected_version not in api_versions:
-        raise ValueError(f"URL must include api-version={expected_version} as a query parameter")
+    # expected_version = "2025-04-01-preview"
+    # if not api_versions or expected_version not in api_versions:
+    #     raise ValueError(f"URL must include api-version={expected_version} as a query parameter")
 
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
+        "api-key": api_key
     }
     payload = {
         "input": prompt,
