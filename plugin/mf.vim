@@ -157,9 +157,14 @@ def _get_registry_text() -> tuple[str, str]:
 def mf_chat(user_prompt: str) -> None:
     content = _send_llm_call(prompt=user_prompt)
     escaped_content = content.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+    
+    vim.command("vsplit")
+    vim.command("wincmd w")
+    vim.command("edit tabnew LLMAnswer")
+    buf = vim.current.buffer
+    row, _ = vim.current.window.cursor
+    buf.append(content.splitlines(), row)
 
-    vim.command('tabnew LLMAnswer')
-    vim.current.buffer[:] = content.splitlines()
     vim.command('echo "Done!"')
 
 
@@ -175,9 +180,13 @@ def mf_ai(user_prompt: str) -> None:
     escaped_content = content.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
 
     vim.eval(f'setreg("{selected_registry}", "{escaped_content}")')
-    vim.command('echo "Done!"')
-    vim.command('tabnew LLMAnswer')
-    vim.current.buffer[:] = content.splitlines()
+
+    vim.command("vsplit")
+    vim.command("wincmd w")
+    vim.command("edit tabnew LLMAnswer")
+    buf = vim.current.buffer
+    row, _ = vim.current.window.cursor
+    buf.append(content.splitlines(), row)
 
     vim.command('setlocal filetype=python')
 
@@ -218,17 +227,18 @@ def _python_filter(files: list) -> list:
     return [
         f
         for f in files
-        if "__pycache__" not in f
+        if "__pycache__" not in f and ".db" not in f
     ]
 
 
 def mf_refactor(user_prompt: str) -> None:
     # current_path = vim.eval("@%")
     folders, user_input = user_prompt.split(" ", 1)
-    files = [f for folder in folders for f in _list_files(folder)]
+    files = [f for folder in folders.split(";") for f in _list_files(folder)]
     files = _python_filter(files)
     codebase = ""
     for fname in files:
+        print(fname)
         with open(fname) as f:
             codebase += f"======\n{fname}\n=======\n{f.read()}\n========" 
 
@@ -252,11 +262,17 @@ def mf_refactor(user_prompt: str) -> None:
     """
     content = _send_llm_call(prompt=prompt_to_send)
     escaped_content = content.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
-    vim.command('echo "Done!"')
-    vim.command('tabnew LLMAnswer')
-    vim.current.buffer[:] = content.splitlines()
+    vim.command('echo "Done1!"')
+    
+    vim.command("vsplit")
+    vim.command("wincmd w")
+    vim.command("edit tabnew LLMAnswer")
+    buf = vim.current.buffer
+    row, _ = vim.current.window.cursor
+    buf.append(content.splitlines(), row)
     vim.command('setlocal filetype=markdown')
     vim.command('%s/\\n/\r/g')
+    vim.command('echo "Done2!"')
 
 def mf_create_file(file_path: str) -> None:
     snippet, selected_registry = _get_registry_text()
@@ -270,9 +286,19 @@ def mf_create_file(file_path: str) -> None:
         f.write(snippet)
     vim.command('echo "Done!"')
 
+def tabber() -> None:
+    vim.command("vsplit")
+    vim.command("wincmd w")
+    vim.command("edit tabnew")
+    buf = vim.current.buffer
+    row, _ = vim.current.window.cursor
+    buf.append('example string', row)
+
+
 EOF
 " Expose :Mfs command that calls the Python function
 command! -nargs=1 Mfai python3 mf_ai(vim.eval('<q-args>'))
 command! -nargs=1 Mfch python3 mf_chat(vim.eval('<q-args>'))
 command! -nargs=1 Mfref python3 mf_refactor(vim.eval('<q-args>'))
 command! -nargs=1 Mfc python3 mf_create_file(vim.eval('<q-args>'))
+command! -nargs=0 Mfx python3 tabber()
