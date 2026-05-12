@@ -295,10 +295,105 @@ def tabber() -> None:
     buf.append('example string', row)
 
 
+
+def _save_files(file_changes: Dict[str, str]) -> None:
+    """
+    Persist each file change to disk. Creates directories if needed.
+    """
+    for path, content in file_changes.items():
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w') as outf:
+            outf.write(content)
+
+def _parse_file_changes(agent_output: str) -> Dict[str, str]:
+    """
+    Look for blocks of the form:
+      # path/to/file.ext
+      ```<optional-fence>
+      file contents...
+      ```
+    and return a mapping {path: contents}.
+    """
+    file_changes: Dict[str, str] = {}
+    pattern = (
+        r"^#\s*(?P<path>.+?)\s*$"        # line beginning with "# path/to/file"
+        r"\s*```(?:[\w+-]*)\s*\n"        # opening fence
+        r"(?P<content>.*?)"              # file content (non-greedy)
+        r"\n```"                         # closing fence
+    )
+    for m in re.finditer(pattern, agent_output, flags=re.MULTILINE | re.DOTALL):
+        p = m.group("path").strip()
+        c = m.group("content")
+        file_changes[p] = c
+    return file_changes
+
+def mf_agents(user_prompt: str) -> None:
+    """
+    <user_prompt> should be: "<folder> <instruction>"
+    Example:
+      :Mfag . 'Please add logging to all routes'
+    """
+    try:
+        folder, instruction = user_prompt.split(" ", 1)
+    except ValueError:
+        raise ValueError("Must supply: <folder> <instruction>")
+
+    # 1) Gather codebase
+    files = [
+        f for f in _list_files(folder)
+        if Path(f).suffix in ('.py','.md','.js','.ts','.cfg','.env')
+    ]
+    codebase = ""
+    for fname in files:
+        with open(fname, 'r') as rf:
+            codebase += f"======\n{fname}\n=======\n{rf.read()}\n========\n"
+
+    # 2) Define the agent team
+    team_definition = """
+You are a team of Python development agents collaborating to fulfill a user instruction:
+- AnalyticAgent: Breaks down the instruction and plans needed steps.
+- CodeAgent: Writes or modifies code and produces diff-like or file blocks.
+- FileSaverAgent: Persists files to disk by calling the `save_file(path, content)` tool.
+
+When FileSaverAgent decides to write files, it MUST invoke the save_file tool for each changed or new file.
+"""
+
+    # 3) Build the prompt
+    full_prompt = f"""{team_definition}
+User Instruction:
+{instruction}
+
+Codebase:
+{codebase}
+"""
+
+    # 4) Call the LLM
+    response = _send_llm_call(prompt=full_prompt)
+
+    # 5) Show the agent conversation in a new buffer
+    vim.command("vsplit")
+    vim.command("wincmd w")
+    vim.command("edit tabnew LLMAgents")
+    buf = vim.current.buffer
+    row, _ = vim.current.window.cursor
+    buf.append(response.splitlines(), row)
+    vim.command('setlocal filetype=markdown')
+
+    # 6) Parse out any save_file calls and write those files
+    changes = _parse_file_changes(response)
+    if changes:
+        _save_files(changes)
+        vim.command('echo "Agent files saved."')
+    else:
+        vim.command('echo "No file changes detected by agents."')
+
+
+
 EOF
 " Expose :Mfs command that calls the Python function
 command! -nargs=1 Mfai python3 mf_ai(vim.eval('<q-args>'))
 command! -nargs=1 Mfch python3 mf_chat(vim.eval('<q-args>'))
 command! -nargs=1 Mfref python3 mf_refactor(vim.eval('<q-args>'))
+command! -nargs=1 Mfag python3 mf_agents(vim.eval('<q-args>'))
 command! -nargs=1 Mfc python3 mf_create_file(vim.eval('<q-args>'))
 command! -nargs=0 Mfx python3 tabber()
