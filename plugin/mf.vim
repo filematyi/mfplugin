@@ -102,7 +102,7 @@ def _send_llm_call(prompt: str) -> str:
                 output = data.get("output")
                 if not isinstance(output, list) or len(output) < 1:
                     raise KeyError("missing or malformed 'output' list")
-                item = output[1] if len(output) > 1 else output[0]
+                item = [op for op in output if 'content' in op][0]
                 if not isinstance(item, dict):
                     raise KeyError("output[1] is not an object")
                 content = item.get("content")
