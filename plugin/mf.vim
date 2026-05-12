@@ -11,7 +11,7 @@ import requests
 import re
 import os
 from pathlib import Path  
-from typing import List, Union  
+from typing import List, Union, Dict  
 import time
 import json
 from urllib.parse import urlparse, parse_qs
