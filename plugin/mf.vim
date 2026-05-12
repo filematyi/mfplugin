@@ -301,7 +301,8 @@ def _save_files(file_changes: Dict[str, str]) -> None:
     Persist each file change to disk. Creates directories if needed.
     """
     for path, content in file_changes.items():
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        if os.path.dirname(path):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w') as outf:
             outf.write(content)
 
