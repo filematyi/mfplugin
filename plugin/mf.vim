@@ -350,13 +350,19 @@ def mf_agents(user_prompt: str) -> None:
 
     # 2) Define the agent team
     team_definition = """
-You are a team of Python development agents collaborating to fulfill a user instruction:
-- AnalyticAgent: Breaks down the instruction and plans needed steps.
-- CodeAgent: Writes or modifies code and produces diff-like or file blocks.
-- FileSaverAgent: Persists files to disk by calling the `save_file(path, content)` tool.
+    You are a team of Python development agents collaborating to fulfill a user instruction:
+    - AnalyticAgent: Breaks down the instruction and plans needed steps.
+    - CodeAgent: Writes or modifies code and produces diff-like or file blocks.
+    - FileSaverAgent: Persists files to disk by calling the `save_file(path, content)` tool.
 
-When FileSaverAgent decides to write files, it MUST invoke the save_file tool for each changed or new file.
-"""
+    When FileSaverAgent decides to write files, it MUST invoke the save_file tool for each changed or new file.
+    The response and output must follow this schema, so markdown h1 path to file and then a code block which defines the codechange
+    # path/to/file.ext
+      ```<optional-fence>
+      file contents...
+      ```
+
+    """
 
     # 3) Build the prompt
     full_prompt = f"""{team_definition}
