@@ -148,7 +148,7 @@ def _read_file(path: str) -> str:
 
 def _save_file(path: str, content: str) -> None:
     if isinstance(content, bytes):
-        content = content.encode('utf-8')
+        content = content.decode('utf-8')
     entities = path.split("/")
     if len(entities) > 1:
         folders = "/".join(entities[0: -1])
