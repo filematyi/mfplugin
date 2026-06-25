@@ -1,5 +1,3 @@
-
-
 if exists('g:loaded_problem_files')
   finish
 endif
@@ -34,10 +32,18 @@ function! s:open_problem_files(root) abort
     echom '.mfhist not found in: ' . l:root
   endif
 
-  let l:files = globpath(l:root, '**/*', 0, 1)
-  let l:files = filter(l:files, 'filereadable(v:val)')
-  let l:files = map(l:files, 'fnamemodify(v:val, ":.")')
+  let l:entries = globpath(l:root, '**/*', 0, 1)
 
+  " Keep both readable files and directories
+  let l:entries = filter(l:entries, 'filereadable(v:val) || isdirectory(v:val)')
+
+  " Convert to relative paths
+  let l:entries = map(l:entries, 'fnamemodify(v:val, ":.")')
+
+  " Optional: add trailing slash to directories for clarity
+  let l:entries = map(l:entries, 'isdirectory(fnamemodify(l:root . "/" . v:val, ":p")) ? v:val . "/" : v:val')
+
+  let l:files = l:entries
   if empty(l:files)
     echo 'No files found.'
     return

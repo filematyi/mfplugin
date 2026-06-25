@@ -15,6 +15,20 @@ FILE_BLOCK_PATTERN = re.compile(
     re.MULTILINE | re.DOTALL,
 )
 
+DEFAULT_FILE_PATH_BLACKLIST_SUBSTRINGS = [
+    ".git",
+    "node_modules",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".venv",
+    "venv",
+    ".idea",
+    ".vscode",
+    ".DS_Store",
+]
+
 
 def _extract_files(text: str) -> dict[str, str]:
     text = textwrap.dedent(text).strip()
@@ -158,6 +172,101 @@ def _save_file(path: str, content: str) -> None:
         f.write(content)
 
 
+def _to_path_string(path) -> str:
+    if isinstance(path, bytes):
+        return path.decode('utf-8')
+    return str(path)
+
+
+def _get_blacklist_substrings() -> list[str]:
+    """
+    Returns file path blacklist substrings.
+
+    Optional Vim config:
+        let g:mfplugin_file_blacklist = ['node_modules', '.git', '__pycache__']
+
+    If the Vim variable is not set, DEFAULT_FILE_PATH_BLACKLIST_SUBSTRINGS is used.
+    """
+    try:
+        configured_blacklist = vim.eval("get(g:, 'mfplugin_file_blacklist', [])")
+    except Exception:
+        configured_blacklist = []
+
+    if isinstance(configured_blacklist, str):
+        configured_blacklist = [configured_blacklist]
+
+    if configured_blacklist:
+        return [_to_path_string(item) for item in configured_blacklist if _to_path_string(item)]
+
+    return DEFAULT_FILE_PATH_BLACKLIST_SUBSTRINGS
+
+
+def _is_blacklisted_path(path: str, blacklist_substrings: list[str]) -> bool:
+    normalized_path = os.path.normpath(path)
+    posix_path = normalized_path.replace(os.sep, "/")
+
+    for substring in blacklist_substrings:
+        if not substring:
+            continue
+        if substring in path or substring in normalized_path or substring in posix_path:
+            return True
+
+    return False
+
+
+def _resolve_selected_files(selected_paths: list) -> list[str]:
+    """
+    selected_paths can contain files and/or folders.
+
+    If a selected path is a file, it is added directly.
+    If a selected path is a folder, every file inside that folder is added recursively.
+    Any file path containing a blacklist substring is skipped.
+    """
+    blacklist_substrings = _get_blacklist_substrings()
+    resolved_files = []
+    seen = set()
+
+    def add_file(file_path: str) -> None:
+        if _is_blacklisted_path(file_path, blacklist_substrings):
+            return
+
+        key = os.path.abspath(os.path.normpath(file_path))
+        if key in seen:
+            return
+
+        seen.add(key)
+        resolved_files.append(file_path)
+
+    for selected_path in selected_paths or []:
+        selected_path = _to_path_string(selected_path)
+
+        if _is_blacklisted_path(selected_path, blacklist_substrings):
+            continue
+
+        if os.path.isfile(selected_path):
+            add_file(selected_path)
+            continue
+
+        if os.path.isdir(selected_path):
+            for root, dirs, files in os.walk(selected_path):
+                dirs[:] = sorted(
+                    d for d in dirs
+                    if not _is_blacklisted_path(os.path.join(root, d), blacklist_substrings)
+                )
+
+                for filename in sorted(files):
+                    file_path = os.path.join(root, filename)
+                    if os.path.isfile(file_path):
+                        add_file(file_path)
+            continue
+
+        # Preserve old behavior for unknown paths:
+        # it will fail later in _read_file just like before.
+        add_file(selected_path)
+
+    return resolved_files
+
+
 def _build_prompt(selected_files: list, user_input: str, save_output: bool) -> list:
     prompt = ["You are an enchanced AI assistant. Your task is to help a human to find answers to his questions."]
     prompt.append("Sometimes its coding related question, sometimes some basic information what they need.")
@@ -165,11 +274,12 @@ def _build_prompt(selected_files: list, user_input: str, save_output: bool) -> l
     prompt.append(f"The User Input and Question: {user_input}")
     prompt.append("===")
 
-    if selected_files:
+    resolved_files = _resolve_selected_files(selected_files)
+
+    if resolved_files:
         prompt.append("===")
         prompt.append("This is the list of files and their contant as context:")
-        for f in selected_files:
-            f = f.decode('utf-8')
+        for f in resolved_files:
             prompt.append("===")
             prompt.append(f"filepath: {f}")
             prompt.append("===")
@@ -206,4 +316,3 @@ def build_result(selected_files, user_input, save_output):
         return "\n".join(["Files updated:"] + list(mapping.keys()) + ["End of updated files"])
 
     return response
-
