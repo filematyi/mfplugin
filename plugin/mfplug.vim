@@ -34,6 +34,9 @@ function! s:open_problem_files(root) abort
 
   let l:entries = globpath(l:root, '**/*', 0, 1)
 
+  " Remove anything inside node_modules, including the node_modules directory itself
+  let l:entries = filter(l:entries, 'v:val !~# ''\v(^|[\/\\])node_modules([\/\\]|$)''')
+
   " Keep both readable files and directories
   let l:entries = filter(l:entries, 'filereadable(v:val) || isdirectory(v:val)')
 
