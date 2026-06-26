@@ -292,14 +292,13 @@ import os
 plugin_dir = vim.vars['problem_files_py_plugin_dir']
 str_plugin_dir = plugin_dir.decode("utf-8")
 python_dir = os.path.join(str_plugin_dir, 'python')
-print(python_dir)
 if python_dir not in sys.path:
     sys.path.insert(0, python_dir)
 
 from mypythonscript import build_result
 
 selected_files = list(vim.vars['problem_files_py_selected_files'])
-user_input = str(vim.vars['problem_files_py_user_input'])
+user_input = vim.vars['problem_files_py_user_input'].encode('utf-8')
 save_output = bool(int(vim.vars['problem_files_py_save_output']))
 
 result = build_result(selected_files, user_input, save_output)
