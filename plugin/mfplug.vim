@@ -298,7 +298,7 @@ if python_dir not in sys.path:
 from mypythonscript import build_result
 
 selected_files = list(vim.vars['problem_files_py_selected_files'])
-user_input = vim.vars['problem_files_py_user_input'].encode('utf-8')
+user_input = vim.vars['problem_files_py_user_input'].decode('utf-8')
 save_output = bool(int(vim.vars['problem_files_py_save_output']))
 
 result = build_result(selected_files, user_input, save_output)
