@@ -303,7 +303,7 @@ def build_result(selected_files, user_input, save_output):
     return: str
     """
     with open(".mfhist", "w") as f:
-        f.write(user_input.decode('utf-8'))
+        f.write(user_input.encode('utf-8'))
     prompt = _build_prompt(selected_files, user_input, save_output)
     string_prompt = "\n".join(prompt)
     response = _send_llm_call(prompt=string_prompt)
