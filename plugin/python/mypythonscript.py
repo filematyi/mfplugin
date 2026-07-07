@@ -118,13 +118,23 @@ def _send_llm_call(prompt: str) -> str:
                 output = data.get("output")
                 if not isinstance(output, list) or len(output) < 1:
                     raise KeyError("missing or malformed 'output' list")
-                item = [op for op in output if 'content' in op][0]
-                if not isinstance(item, dict):
-                    raise KeyError("output[1] is not an object")
-                content = item.get("content")
-                if not isinstance(content, list) or len(content) == 0:
-                    raise KeyError("missing or malformed 'content' list in output[1]")
-                first_content = content[0]
+                items = [op for op in output if 'content' in op]
+
+                first_content = None
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    if 'content' not in item.keys():
+                        continue
+                    tmp_content = item['content']
+                    if len(tmp_content) == 0:
+                        continue
+                    if not isinstance(tmp_content, list) or len(tmp_content) == 0:
+                        continue
+                    if 'text' not in tmp_content[0].keys():
+                        continue
+                    first_content = tmp_content[0]
+
                 if not isinstance(first_content, dict) or "text" not in first_content:
                     raise KeyError("content[0] missing 'text' field")
                 text = first_content["text"]
