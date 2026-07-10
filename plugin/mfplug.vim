@@ -48,7 +48,7 @@ function! s:open_problem_files(root) abort
 
   let l:files = l:entries
   if empty(l:files)
-    echo 'No files found.'
+    echo 'No filess found.'
     return
   endif
 
