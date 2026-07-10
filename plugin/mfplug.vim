@@ -197,19 +197,6 @@ function! s:move_input_cursor(delta) abort
 endfunction
 
 
-function! s:is_delete_key(key) abort
-  let l:key_name = keytrans(a:key)
-
-  " Since many terminals send DEL for Backspace, forward-delete is exposed
-  " through Ctrl-D and keypad-delete when available.
-  return a:key ==# "\<C-D>"
-        \ || a:key ==# "\<kDel>"
-        \ || a:key ==# nr2char(4)
-        \ || l:key_name ==# '<C-D>'
-        \ || l:key_name ==# '<kDel>'
-        \ || l:key_name ==# '^D'
-endfunction
-
 function! s:show_result_popup(selected_files, user_input, save_output) abort
   let l:python_output = s:call_python_backend(a:selected_files, a:user_input, a:save_output)
   let l:content_lines = s:text_to_lines(l:python_output)
@@ -308,7 +295,7 @@ function! s:popup_filter(winid, key) abort
     call s:move_input_cursor(1)
   elseif a:key ==# "\<BS>"
     call s:backspace_input()
-  elseif s:is_delete_key(a:key)
+  elseif a:key ==# "\<Del>"
     call s:delete_input_char()
   elseif a:key ==# "\<CR>"
     call s:submit()
