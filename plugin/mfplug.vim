@@ -60,7 +60,7 @@ function! s:open_problem_files(root) abort
         \ 'offset': 0,
         \ 'height': 15,
         \ 'input': l:initial_input,
-        \ 'input_cursor': len(l:initial_input),
+        \ 'input_cursor': strchars(l:initial_input),
         \ 'save_output': 0,
         \ }
 
@@ -80,7 +80,17 @@ function! s:open_problem_files(root) abort
   call s:redraw()
 endfunction
 
+function! s:input_len() abort
+  return strchars(get(s:state, 'input', ''))
+endfunction
+
+function! s:clamp_input_cursor() abort
+  let s:state.input_cursor = max([0, min([s:input_len(), get(s:state, 'input_cursor', 0)])])
+endfunction
+
 function! s:render_lines() abort
+  call s:clamp_input_cursor()
+
   let l:lines = []
   let l:max = min([len(s:state.files), s:state.offset + s:state.height])
 
@@ -93,9 +103,10 @@ function! s:render_lines() abort
   call add(l:lines, repeat('─', 76))
   call add(l:lines, 'Save output? ' . (s:state.save_output ? '[x]' : '[ ]'))
 
-  let l:input_display = 'Input: ' . s:state.input
-  let l:cursor_col = len('Input: ') + s:state.input_cursor
-  let l:input_display = strpart(l:input_display, 0, l:cursor_col) . '|' . strpart(l:input_display, l:cursor_col)
+  let l:prefix = 'Input: '
+  let l:input_display = l:prefix . s:state.input
+  let l:cursor_col = strchars(l:prefix) + s:state.input_cursor
+  let l:input_display = strcharpart(l:input_display, 0, l:cursor_col) . '|' . strcharpart(l:input_display, l:cursor_col)
 
   call add(l:lines, l:input_display)
   call add(l:lines, '↓/↑: move | 1: toggle file | 2: toggle save output | 3: clear input | Type: input | <Enter>: submit | ESC: quit')
@@ -139,32 +150,58 @@ endfunction
 
 function! s:clear_input() abort
   let s:state.input = ''
+  let s:state.input_cursor = 0
   call s:redraw()
 endfunction
 
 function! s:insert_input_char(char) abort
-  let l:before = strpart(s:state.input, 0, s:state.input_cursor)
-  let l:after = strpart(s:state.input, s:state.input_cursor)
+  call s:clamp_input_cursor()
+
+  let l:before = strcharpart(s:state.input, 0, s:state.input_cursor)
+  let l:after = strcharpart(s:state.input, s:state.input_cursor)
   let s:state.input = l:before . a:char . l:after
-  let s:state.input_cursor += len(a:char)
+  let s:state.input_cursor += strchars(a:char)
   call s:redraw()
 endfunction
 
 function! s:backspace_input() abort
+  call s:clamp_input_cursor()
+
   if s:state.input_cursor <= 0
     return
   endif
 
-  let l:before = strpart(s:state.input, 0, s:state.input_cursor - 1)
-  let l:after = strpart(s:state.input, s:state.input_cursor)
+  let l:before = strcharpart(s:state.input, 0, s:state.input_cursor - 1)
+  let l:after = strcharpart(s:state.input, s:state.input_cursor)
   let s:state.input = l:before . l:after
   let s:state.input_cursor -= 1
   call s:redraw()
 endfunction
 
-function! s:move_input_cursor(delta) abort
-  let s:state.input_cursor = max([0, min([len(s:state.input), s:state.input_cursor + a:delta])])
+function! s:delete_input_char() abort
+  call s:clamp_input_cursor()
+
+  if s:state.input_cursor >= s:input_len()
+    return
+  endif
+
+  let l:before = strcharpart(s:state.input, 0, s:state.input_cursor)
+  let l:after = strcharpart(s:state.input, s:state.input_cursor + 1)
+  let s:state.input = l:before . l:after
   call s:redraw()
+endfunction
+
+function! s:move_input_cursor(delta) abort
+  let s:state.input_cursor = max([0, min([s:input_len(), s:state.input_cursor + a:delta])])
+  call s:redraw()
+endfunction
+
+function! s:is_backspace_key(key) abort
+  return a:key ==# "\<BS>" || a:key ==# "\<C-H>" || a:key ==# nr2char(8)
+endfunction
+
+function! s:is_delete_key(key) abort
+  return a:key ==# "\<Del>" || a:key ==# nr2char(127)
 endfunction
 
 function! s:show_result_popup(selected_files, user_input, save_output) abort
@@ -263,15 +300,23 @@ function! s:popup_filter(winid, key) abort
     call s:move_input_cursor(-1)
   elseif a:key ==# "\<Right>"
     call s:move_input_cursor(1)
-  elseif a:key ==# "\<BS>" || a:key ==# "\<C-H>"
+  elseif s:is_backspace_key(a:key)
     call s:backspace_input()
+  elseif s:is_delete_key(a:key)
+    " Some terminals send DEL for Backspace.  If the cursor is at the end,
+    " behave like Backspace so typed text can always be removed.
+    if s:state.input_cursor >= s:input_len()
+      call s:backspace_input()
+    else
+      call s:delete_input_char()
+    endif
   elseif a:key ==# "\<CR>"
     call s:submit()
   elseif a:key ==# "\<Esc>"
     call popup_close(a:winid)
   elseif a:key ==# ' '
     call s:insert_input_char(' ')
-  elseif strlen(a:key) == 1
+  elseif strchars(a:key) == 1
     call s:insert_input_char(a:key)
   endif
   return 1
