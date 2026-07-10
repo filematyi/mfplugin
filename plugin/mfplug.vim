@@ -109,7 +109,7 @@ function! s:render_lines() abort
   let l:input_display = strcharpart(l:input_display, 0, l:cursor_col) . '|' . strcharpart(l:input_display, l:cursor_col)
 
   call add(l:lines, l:input_display)
-  call add(l:lines, '↓/↑: move | 1: toggle file | 2: toggle save output | 3: clear input | Type: input | <Enter>: submit | ESC: quit')
+  call add(l:lines, '↓/↑: move | 1: toggle file | 2: toggle save output | 3: clear input | Type: input | <BS>/<Del>: backspace | <C-D>: delete | <Enter>: submit | ESC: quit')
   return l:lines
 endfunction
 
@@ -197,11 +197,34 @@ function! s:move_input_cursor(delta) abort
 endfunction
 
 function! s:is_backspace_key(key) abort
-  return a:key ==# "\<BS>" || a:key ==# "\<C-H>" || a:key ==# nr2char(8)
+  let l:key_name = keytrans(a:key)
+
+  " Terminals differ: Backspace may arrive as <BS>, <C-H>, literal ^H,
+  " literal DEL (^?), or even <Del>.  Treat all of these as backspace so
+  " removing typed text works reliably.
+  return a:key ==# "\<BS>"
+        \ || a:key ==# "\<C-H>"
+        \ || a:key ==# "\<Del>"
+        \ || a:key ==# nr2char(8)
+        \ || a:key ==# nr2char(127)
+        \ || l:key_name ==# '<BS>'
+        \ || l:key_name ==# '<C-H>'
+        \ || l:key_name ==# '<Del>'
+        \ || l:key_name ==# '^H'
+        \ || l:key_name ==# '^?'
 endfunction
 
 function! s:is_delete_key(key) abort
-  return a:key ==# "\<Del>" || a:key ==# nr2char(127)
+  let l:key_name = keytrans(a:key)
+
+  " Since many terminals send DEL for Backspace, forward-delete is exposed
+  " through Ctrl-D and keypad-delete when available.
+  return a:key ==# "\<C-D>"
+        \ || a:key ==# "\<kDel>"
+        \ || a:key ==# nr2char(4)
+        \ || l:key_name ==# '<C-D>'
+        \ || l:key_name ==# '<kDel>'
+        \ || l:key_name ==# '^D'
 endfunction
 
 function! s:show_result_popup(selected_files, user_input, save_output) abort
@@ -303,13 +326,7 @@ function! s:popup_filter(winid, key) abort
   elseif s:is_backspace_key(a:key)
     call s:backspace_input()
   elseif s:is_delete_key(a:key)
-    " Some terminals send DEL for Backspace.  If the cursor is at the end,
-    " behave like Backspace so typed text can always be removed.
-    if s:state.input_cursor >= s:input_len()
-      call s:backspace_input()
-    else
-      call s:delete_input_char()
-    endif
+    call s:delete_input_char()
   elseif a:key ==# "\<CR>"
     call s:submit()
   elseif a:key ==# "\<Esc>"
