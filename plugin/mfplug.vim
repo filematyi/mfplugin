@@ -8,6 +8,47 @@ let s:state = {}
 
 command! -nargs=? Mf call s:open_problem_files(<q-args>)
 
+function! s:relative_to_root(root, path) abort
+  let l:root = fnamemodify(a:root, ':p')
+  let l:path = fnamemodify(a:path, ':p')
+
+  if stridx(l:path, l:root) == 0
+    return strpart(l:path, strlen(l:root))
+  endif
+
+  return fnamemodify(l:path, ':.')
+endfunction
+
+function! s:read_history_input(histfile) abort
+  if !filereadable(a:histfile)
+    return ''
+  endif
+
+  let l:raw = join(readfile(a:histfile), "\n")
+
+  " New .mfhist format is JSON:
+  " {
+  "   "version": 1,
+  "   "user_input": "...",
+  "   "last_change": { ... }
+  " }
+  "
+  " Keep backward compatibility with the old format where .mfhist
+  " contained only the raw user input.
+  if exists('*json_decode')
+    try
+      let l:decoded = json_decode(l:raw)
+      if type(l:decoded) == type({}) && has_key(l:decoded, 'user_input')
+        return type(l:decoded.user_input) == type('') ? l:decoded.user_input : string(l:decoded.user_input)
+      endif
+    catch
+      " Old raw text format or invalid JSON. Fall through.
+    endtry
+  endif
+
+  return l:raw
+endfunction
+
 function! s:open_problem_files(root) abort
   if !exists('*popup_create')
     echoerr 'This plugin requires Vim with popup support.'
@@ -15,19 +56,20 @@ function! s:open_problem_files(root) abort
   endif
 
   let l:root = empty(a:root) ? getcwd() : fnamemodify(a:root, ':p')
+  let l:root = fnamemodify(l:root, ':p')
+
   if !isdirectory(l:root)
     echoerr 'Invalid directory: ' . l:root
     return
   endif
 
   " Check for .mfhist in the root directory
-  let l:histfile = fnamemodify(l:root, ':p') . '/.mfhist'
+  let l:histfile = l:root . '/.mfhist'
   let l:initial_input = ''
 
   if filereadable(l:histfile)
     echom '.mfhist found: ' . l:histfile
-    let l:hist_lines = readfile(l:histfile)
-    let l:initial_input = join(l:hist_lines, "\n")
+    let l:initial_input = s:read_history_input(l:histfile)
   else
     echom '.mfhist not found in: ' . l:root
   endif
@@ -37,11 +79,14 @@ function! s:open_problem_files(root) abort
   " Remove anything inside node_modules, including the node_modules directory itself
   let l:entries = filter(l:entries, 'v:val !~# ''\v(^|[\/\\])node_modules([\/\\]|$)''')
 
+  " Hide the history file from the selectable file list. It is managed by the plugin.
+  let l:entries = filter(l:entries, 'fnamemodify(v:val, ":t") !=# ''.mfhist''')
+
   " Keep both readable files and directories
   let l:entries = filter(l:entries, 'filereadable(v:val) || isdirectory(v:val)')
 
-  " Convert to relative paths
-  let l:entries = map(l:entries, 'fnamemodify(v:val, ":.")')
+  " Convert to paths relative to the chosen root directory
+  let l:entries = map(l:entries, 's:relative_to_root(l:root, v:val)')
 
   " Optional: add trailing slash to directories for clarity
   let l:entries = map(l:entries, 'isdirectory(fnamemodify(l:root . "/" . v:val, ":p")) ? v:val . "/" : v:val')
@@ -109,7 +154,8 @@ function! s:render_lines() abort
   let l:input_display = strcharpart(l:input_display, 0, l:cursor_col) . '|' . strcharpart(l:input_display, l:cursor_col)
 
   call add(l:lines, l:input_display)
-  call add(l:lines, '↓/↑: move | 1: toggle file | 2: toggle save output | 3: clear input | Type: input | <BS>/<Del>: backspace | <C-D>: delete | <Enter>: submit | ESC: quit')
+  call add(l:lines, '↓/↑: move | 1: toggle file | 2: toggle save output | 3: clear input | 4: revert last change')
+  call add(l:lines, 'Type: input | <BS>/<Del>: backspace | <C-D>: delete | <Enter>: submit | ESC: quit')
   return l:lines
 endfunction
 
@@ -196,10 +242,8 @@ function! s:move_input_cursor(delta) abort
   call s:redraw()
 endfunction
 
-
-function! s:show_result_popup(selected_files, user_input, save_output) abort
-  let l:python_output = s:call_python_backend(a:selected_files, a:user_input, a:save_output)
-  let l:content_lines = s:text_to_lines(l:python_output)
+function! s:show_text_popup(title, text) abort
+  let l:content_lines = s:text_to_lines(a:text)
 
   let l:lines = ['']
   call extend(l:lines, l:content_lines)
@@ -207,7 +251,7 @@ function! s:show_result_popup(selected_files, user_input, save_output) abort
   call extend(l:lines, ['Use arrows, PgUp/PgDn, mouse wheel to scroll'])
 
   call popup_create(l:lines, {
-        \ 'title': ' Results ',
+        \ 'title': a:title,
         \ 'line': 4,
         \ 'col': 8,
         \ 'minwidth': 120,
@@ -220,6 +264,11 @@ function! s:show_result_popup(selected_files, user_input, save_output) abort
         \ 'scrollbar': 1,
         \ 'filter': function('s:result_popup_filter'),
         \ })
+endfunction
+
+function! s:show_result_popup(selected_files, user_input, save_output) abort
+  let l:python_output = s:call_python_backend(a:selected_files, a:user_input, a:save_output)
+  call s:show_text_popup(' Results ', l:python_output)
 endfunction
 
 function! s:result_popup_filter(winid, key) abort
@@ -278,6 +327,17 @@ function! s:submit() abort
   call s:show_result_popup(l:selected_files, l:user_input, l:save_output)
 endfunction
 
+function! s:revert_last_change() abort
+  let l:root = s:state.root
+
+  if has_key(s:state, 'winid')
+    call popup_close(s:state.winid)
+  endif
+
+  let l:result = s:call_python_revert(l:root)
+  call s:show_text_popup(' Revert last change ', l:result)
+endfunction
+
 function! s:popup_filter(winid, key) abort
   if a:key ==# "\<Down>"
     call s:move_cursor(1)
@@ -289,6 +349,8 @@ function! s:popup_filter(winid, key) abort
     call s:toggle_save_output()
   elseif a:key ==# '3'
     call s:clear_input()
+  elseif a:key ==# '4'
+    call s:revert_last_change()
   elseif a:key ==# "\<Left>"
     call s:move_input_cursor(-1)
   elseif a:key ==# "\<Right>"
@@ -318,6 +380,7 @@ function! s:call_python_backend(selected_files, user_input, save_output) abort
   let g:problem_files_py_user_input = a:user_input
   let g:problem_files_py_save_output = a:save_output
   let g:problem_files_py_plugin_dir = s:script_dir
+  let g:problem_files_py_root = get(s:state, 'root', getcwd())
 
 python3 << EOF
 import sys
@@ -325,7 +388,7 @@ import vim
 import os
 
 plugin_dir = vim.vars['problem_files_py_plugin_dir']
-str_plugin_dir = plugin_dir.decode("utf-8")
+str_plugin_dir = plugin_dir.decode("utf-8") if isinstance(plugin_dir, bytes) else str(plugin_dir)
 python_dir = os.path.join(str_plugin_dir, 'python')
 if python_dir not in sys.path:
     sys.path.insert(0, python_dir)
@@ -333,16 +396,51 @@ if python_dir not in sys.path:
 from mypythonscript import build_result
 
 selected_files = list(vim.vars['problem_files_py_selected_files'])
-user_input = vim.vars['problem_files_py_user_input'].decode('utf-8')
+user_input_raw = vim.vars['problem_files_py_user_input']
+user_input = user_input_raw.decode('utf-8') if isinstance(user_input_raw, bytes) else str(user_input_raw)
 save_output = bool(int(vim.vars['problem_files_py_save_output']))
+root_raw = vim.vars['problem_files_py_root']
+root_path = root_raw.decode('utf-8') if isinstance(root_raw, bytes) else str(root_raw)
 
-result = build_result(selected_files, user_input, save_output)
+result = build_result(selected_files, user_input, save_output, root_path)
 vim.vars['problem_files_py_result'] = result
 EOF
 
   return get(g:, 'problem_files_py_result', '')
 endfunction
 
+function! s:call_python_revert(root) abort
+  if !has('python3')
+    return 'Python support is not available in this Vim.'
+  endif
+
+  let g:problem_files_py_plugin_dir = s:script_dir
+  let g:problem_files_py_root = a:root
+
+python3 << EOF
+import sys
+import vim
+import os
+
+plugin_dir = vim.vars['problem_files_py_plugin_dir']
+str_plugin_dir = plugin_dir.decode("utf-8") if isinstance(plugin_dir, bytes) else str(plugin_dir)
+python_dir = os.path.join(str_plugin_dir, 'python')
+if python_dir not in sys.path:
+    sys.path.insert(0, python_dir)
+
+from mypythonscript import revert_last_change
+
+root_raw = vim.vars['problem_files_py_root']
+root_path = root_raw.decode('utf-8') if isinstance(root_raw, bytes) else str(root_raw)
+
+result = revert_last_change(root_path)
+vim.vars['problem_files_py_revert_result'] = result
+EOF
+
+  return get(g:, 'problem_files_py_revert_result', '')
+endfunction
+
 function! s:text_to_lines(text) abort
   return split(a:text, "\n", 1)
 endfunction
+

@@ -27,6 +27,7 @@ DEFAULT_FILE_PATH_BLACKLIST_SUBSTRINGS = [
     ".idea",
     ".vscode",
     ".DS_Store",
+    ".mfhist",
 ]
 
 
@@ -165,27 +166,139 @@ def _send_llm_call(prompt: str) -> str:
         raise RuntimeError(f"{err_msg} Last response body: {last_response_text}")
 
 
+def _to_path_string(path) -> str:
+    if isinstance(path, bytes):
+        return path.decode('utf-8')
+    return str(path)
+
+
+def _normalize_root_path(root_path=None) -> str:
+    if root_path is None:
+        return os.getcwd()
+
+    root_path = _to_path_string(root_path)
+    if not root_path:
+        return os.getcwd()
+
+    return os.path.abspath(os.path.normpath(root_path))
+
+
+def _history_file_path(root_path=None) -> str:
+    return os.path.join(_normalize_root_path(root_path), ".mfhist")
+
+
+def _default_history() -> dict:
+    return {
+        "version": 1,
+        "user_input": "",
+        "last_change": {
+            "changed_at": "",
+            "files": [],
+        },
+    }
+
+
+def _load_history(root_path=None) -> dict:
+    histfile = _history_file_path(root_path)
+
+    if not os.path.isfile(histfile):
+        return _default_history()
+
+    with open(histfile, "r", encoding="utf-8") as f:
+        raw = f.read()
+
+    if not raw:
+        return _default_history()
+
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            history = _default_history()
+
+            user_input = parsed.get("user_input", "")
+            history["user_input"] = user_input if isinstance(user_input, str) else str(user_input)
+
+            last_change = parsed.get("last_change", {})
+            if isinstance(last_change, dict):
+                files = last_change.get("files", [])
+                history["last_change"] = {
+                    "changed_at": last_change.get("changed_at", ""),
+                    "files": files if isinstance(files, list) else [],
+                }
+
+            return history
+    except Exception:
+        # Backward compatibility with old .mfhist format where the file
+        # contained only raw user input.
+        pass
+
+    history = _default_history()
+    history["user_input"] = raw
+    return history
+
+
+def _write_history(root_path, history: dict) -> None:
+    histfile = _history_file_path(root_path)
+    directory = os.path.dirname(histfile)
+
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory)
+
+    data = _default_history()
+    data["user_input"] = history.get("user_input", "")
+    data["last_change"] = history.get("last_change", {"changed_at": "", "files": []})
+
+    tmpfile = histfile + ".tmp"
+    with open(tmpfile, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    os.replace(tmpfile, histfile)
+
+
+def _path_relative_to_root(path: str, root_path=None) -> str:
+    root_path = _normalize_root_path(root_path)
+    abs_path = os.path.abspath(os.path.normpath(path))
+
+    try:
+        common = os.path.commonpath([root_path, abs_path])
+        if common == root_path:
+            return os.path.relpath(abs_path, root_path).replace(os.sep, "/")
+    except ValueError:
+        # Different Windows drives, etc.
+        pass
+
+    return abs_path
+
+
+def _resolve_path_against_root(path: str, root_path=None) -> str:
+    path = _to_path_string(path).strip()
+    root_path = _normalize_root_path(root_path)
+
+    if os.path.isabs(path):
+        return os.path.abspath(os.path.normpath(path))
+
+    return os.path.abspath(os.path.normpath(os.path.join(root_path, path)))
+
+
+def _is_history_file(path: str, root_path=None) -> bool:
+    return os.path.abspath(os.path.normpath(path)) == os.path.abspath(os.path.normpath(_history_file_path(root_path)))
+
+
 def _read_file(path: str) -> str:
-    with open(path) as f:
+    with open(path, "r", encoding="utf-8") as f:
         return f.read()
 
 
 def _save_file(path: str, content: str) -> None:
     if isinstance(content, bytes):
         content = content.decode('utf-8')
-    entities = path.split("/")
-    if len(entities) > 1:
-        folders = "/".join(entities[0: -1])
-        if not os.path.exists(folders):
-            os.makedirs(folders)
-    with open(path, 'w') as f:
+
+    directory = os.path.dirname(path)
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory)
+
+    with open(path, 'w', encoding="utf-8") as f:
         f.write(content)
-
-
-def _to_path_string(path) -> str:
-    if isinstance(path, bytes):
-        return path.decode('utf-8')
-    return str(path)
 
 
 def _get_blacklist_substrings() -> list[str]:
@@ -224,7 +337,7 @@ def _is_blacklisted_path(path: str, blacklist_substrings: list[str]) -> bool:
     return False
 
 
-def _resolve_selected_files(selected_paths: list) -> list[str]:
+def _resolve_selected_files(selected_paths: list, root_path=None) -> list[str]:
     """
     selected_paths can contain files and/or folders.
 
@@ -232,12 +345,16 @@ def _resolve_selected_files(selected_paths: list) -> list[str]:
     If a selected path is a folder, every file inside that folder is added recursively.
     Any file path containing a blacklist substring is skipped.
     """
+    root_path = _normalize_root_path(root_path)
     blacklist_substrings = _get_blacklist_substrings()
     resolved_files = []
     seen = set()
 
     def add_file(file_path: str) -> None:
         if _is_blacklisted_path(file_path, blacklist_substrings):
+            return
+
+        if _is_history_file(file_path, root_path):
             return
 
         key = os.path.abspath(os.path.normpath(file_path))
@@ -253,12 +370,14 @@ def _resolve_selected_files(selected_paths: list) -> list[str]:
         if _is_blacklisted_path(selected_path, blacklist_substrings):
             continue
 
-        if os.path.isfile(selected_path):
-            add_file(selected_path)
+        abs_selected_path = _resolve_path_against_root(selected_path, root_path)
+
+        if os.path.isfile(abs_selected_path):
+            add_file(abs_selected_path)
             continue
 
-        if os.path.isdir(selected_path):
-            for root, dirs, files in os.walk(selected_path):
+        if os.path.isdir(abs_selected_path):
+            for root, dirs, files in os.walk(abs_selected_path):
                 dirs[:] = sorted(
                     d for d in dirs
                     if not _is_blacklisted_path(os.path.join(root, d), blacklist_substrings)
@@ -272,26 +391,28 @@ def _resolve_selected_files(selected_paths: list) -> list[str]:
 
         # Preserve old behavior for unknown paths:
         # it will fail later in _read_file just like before.
-        add_file(selected_path)
+        add_file(abs_selected_path)
 
     return resolved_files
 
 
-def _build_prompt(selected_files: list, user_input: str, save_output: bool) -> list:
+def _build_prompt(selected_files: list, user_input: str, save_output: bool, root_path=None) -> list:
+    root_path = _normalize_root_path(root_path)
+
     prompt = ["You are an enchanced AI assistant. Your task is to help a human to find answers to his questions."]
     prompt.append("Sometimes its coding related question, sometimes some basic information what they need.")
     prompt.append("===")
     prompt.append(f"The User Input and Question: {user_input}")
     prompt.append("===")
 
-    resolved_files = _resolve_selected_files(selected_files)
+    resolved_files = _resolve_selected_files(selected_files, root_path)
 
     if resolved_files:
         prompt.append("===")
         prompt.append("This is the list of files and their contant as context:")
         for f in resolved_files:
             prompt.append("===")
-            prompt.append(f"filepath: {f}")
+            prompt.append(f"filepath: {_path_relative_to_root(f, root_path)}")
             prompt.append("===")
             prompt.append(_read_file(f))
             prompt.append("===")
@@ -305,25 +426,194 @@ def _build_prompt(selected_files: list, user_input: str, save_output: bool) -> l
     return prompt
 
 
-def build_result(selected_files, user_input, save_output):
+def _collect_backups_for_mapping(mapping: dict[str, str], root_path=None) -> tuple[list[dict], list[tuple[str, str, str]], list[str]]:
+    root_path = _normalize_root_path(root_path)
+
+    backups = []
+    files_to_write = []
+    skipped = []
+    seen = set()
+
+    for path, content in mapping.items():
+        abs_path = _resolve_path_against_root(path, root_path)
+        history_path = _path_relative_to_root(abs_path, root_path)
+
+        if _is_history_file(abs_path, root_path):
+            skipped.append(f"{history_path} skipped because .mfhist is managed by the plugin")
+            continue
+
+        key = os.path.abspath(os.path.normcase(os.path.normpath(abs_path)))
+        if key in seen:
+            skipped.append(f"{history_path} skipped because it was duplicated in the response")
+            continue
+
+        seen.add(key)
+
+        if os.path.isdir(abs_path):
+            skipped.append(f"{history_path} skipped because it is a directory")
+            continue
+
+        existed = os.path.exists(abs_path)
+        original_content = ""
+
+        if existed:
+            original_content = _read_file(abs_path)
+
+        backups.append({
+            "path": history_path,
+            "existed": bool(existed),
+            "content": original_content,
+        })
+        files_to_write.append((abs_path, content, history_path))
+
+    return backups, files_to_write, skipped
+
+
+def build_result(selected_files, user_input, save_output, root_path=None):
     """
     selected_files: list[str]
     user_input: str
     save_output: bool
+    root_path: project root where .mfhist is stored
     return: str
     """
-    print(user_input)
-    with open(".mfhist", "w") as f:
-        f.write(user_input)
-    prompt = _build_prompt(selected_files, user_input, save_output)
+    root_path = _normalize_root_path(root_path)
+
+    history = _load_history(root_path)
+    history["user_input"] = user_input
+    _write_history(root_path, history)
+
+    prompt = _build_prompt(selected_files, user_input, save_output, root_path)
     string_prompt = "\n".join(prompt)
     response = _send_llm_call(prompt=string_prompt)
 
     if save_output:
         mapping = _extract_files(response)
 
-        for path, content in mapping.items():
-            _save_file(path, content)
-        return "\n".join(["Files updated:"] + list(mapping.keys()) + ["End of updated files"])
+        if not mapping:
+            return "No file blocks found in the response. No files were updated."
+
+        backups, files_to_write, skipped = _collect_backups_for_mapping(mapping, root_path)
+
+        if files_to_write:
+            history = _load_history(root_path)
+            history["user_input"] = user_input
+            history["last_change"] = {
+                "changed_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                "files": backups,
+            }
+
+            # Persist the original file contents before changing anything.
+            # If a later write fails halfway, option 4 can still restore
+            # the files that were already modified.
+            _write_history(root_path, history)
+
+            for abs_path, content, history_path in files_to_write:
+                _save_file(abs_path, content)
+
+        lines = []
+        if files_to_write:
+            lines.extend(["Files updated:"])
+            lines.extend(history_path for _abs_path, _content, history_path in files_to_write)
+            lines.append("End of updated files")
+            lines.append("")
+            lines.append("Original content was stored in .mfhist. Press option 4 to revert this change.")
+        else:
+            lines.append("No files were updated.")
+
+        if skipped:
+            lines.append("")
+            lines.append("Skipped files:")
+            lines.extend(skipped)
+
+        return "\n".join(lines)
 
     return response
+
+
+def revert_last_change(root_path=None):
+    """
+    Revert files using the last saved backup in .mfhist.
+
+    Existing files are restored to their previous content.
+    Files that did not exist before the last saved output are deleted.
+    """
+    root_path = _normalize_root_path(root_path)
+    history = _load_history(root_path)
+
+    last_change = history.get("last_change", {})
+    files = last_change.get("files", []) if isinstance(last_change, dict) else []
+
+    if not files:
+        return "No last change found in .mfhist. Nothing to revert."
+
+    restored = []
+    deleted = []
+    errors = []
+
+    for item in files:
+        if not isinstance(item, dict):
+            continue
+
+        path = item.get("path", "")
+        existed = bool(item.get("existed", True))
+        content = item.get("content", "")
+
+        if not path:
+            continue
+
+        abs_path = _resolve_path_against_root(path, root_path)
+        display_path = _path_relative_to_root(abs_path, root_path)
+
+        try:
+            if _is_history_file(abs_path, root_path):
+                errors.append(f"{display_path}: refusing to modify .mfhist")
+                continue
+
+            if existed:
+                _save_file(abs_path, content if isinstance(content, str) else str(content))
+                restored.append(display_path)
+            else:
+                if os.path.isfile(abs_path):
+                    os.remove(abs_path)
+                    deleted.append(display_path)
+                elif os.path.exists(abs_path):
+                    errors.append(f"{display_path}: existed after change but is not a file, not deleted")
+                else:
+                    deleted.append(display_path)
+        except Exception as e:
+            errors.append(f"{display_path}: {e}")
+
+    if not errors:
+        history["last_change"] = {
+            "changed_at": "",
+            "files": [],
+        }
+        _write_history(root_path, history)
+
+    lines = []
+
+    if restored:
+        lines.append("Files restored:")
+        lines.extend(restored)
+
+    if deleted:
+        if lines:
+            lines.append("")
+        lines.append("Files deleted because they did not exist before the last change:")
+        lines.extend(deleted)
+
+    if errors:
+        if lines:
+            lines.append("")
+        lines.append("Errors:")
+        lines.extend(errors)
+        lines.append("")
+        lines.append(".mfhist was kept so you can try reverting again.")
+    else:
+        if lines:
+            lines.append("")
+        lines.append("Last change reverted successfully.")
+        lines.append(".mfhist user input was kept, and the consumed backup was cleared.")
+
+    return "\n".join(lines)
