@@ -19,6 +19,25 @@ function! s:relative_to_root(root, path) abort
   return fnamemodify(l:path, ':.')
 endfunction
 
+function! s:leader_key() abort
+  let l:leader = get(g:, 'mapleader', '\')
+  return empty(l:leader) ? '\' : l:leader
+endfunction
+
+function! s:leader_label() abort
+  let l:leader = s:leader_key()
+
+  if l:leader ==# ' '
+    return '<Space>'
+  endif
+
+  if l:leader ==# "\t"
+    return '<Tab>'
+  endif
+
+  return l:leader
+endfunction
+
 function! s:read_history_input(histfile) abort
   if !filereadable(a:histfile)
     return ''
@@ -107,6 +126,7 @@ function! s:open_problem_files(root) abort
         \ 'input': l:initial_input,
         \ 'input_cursor': strchars(l:initial_input),
         \ 'save_output': 0,
+        \ 'pending_leader': 0,
         \ }
 
   let l:lines = s:render_lines()
@@ -154,7 +174,8 @@ function! s:render_lines() abort
   let l:input_display = strcharpart(l:input_display, 0, l:cursor_col) . '|' . strcharpart(l:input_display, l:cursor_col)
 
   call add(l:lines, l:input_display)
-  call add(l:lines, '↓/↑: move | 1: toggle file | 2: toggle save output | 3: clear input | 4: revert last change')
+  call add(l:lines, '↓/↑: move | <Leader>1: toggle file | <Leader>2: toggle save output')
+  call add(l:lines, '<Leader>3: clear input | <Leader>4: revert last change | Leader: ' . s:leader_label())
   call add(l:lines, 'Type: input | <BS>/<Del>: backspace | <C-D>: delete | <Enter>: submit | ESC: quit')
   return l:lines
 endfunction
@@ -338,19 +359,54 @@ function! s:revert_last_change() abort
   call s:show_text_popup(' Revert last change ', l:result)
 endfunction
 
+function! s:handle_leader_command(key) abort
+  if a:key ==# '1'
+    call s:toggle_current()
+    return 1
+  endif
+
+  if a:key ==# '2'
+    call s:toggle_save_output()
+    return 1
+  endif
+
+  if a:key ==# '3'
+    call s:clear_input()
+    return 1
+  endif
+
+  if a:key ==# '4'
+    call s:revert_last_change()
+    return 1
+  endif
+
+  return 0
+endfunction
+
 function! s:popup_filter(winid, key) abort
-  if a:key ==# "\<Down>"
+  let l:skip_leader_detection = 0
+
+  if get(s:state, 'pending_leader', 0)
+    let s:state.pending_leader = 0
+
+    if s:handle_leader_command(a:key)
+      return 1
+    endif
+
+    if strchars(s:leader_key()) == 1
+      call s:insert_input_char(s:leader_key())
+    endif
+
+    let l:skip_leader_detection = 1
+  endif
+
+  if !l:skip_leader_detection && a:key ==# s:leader_key()
+    let s:state.pending_leader = 1
+    return 1
+  elseif a:key ==# "\<Down>"
     call s:move_cursor(1)
   elseif a:key ==# "\<Up>"
     call s:move_cursor(-1)
-  elseif a:key ==# '1'
-    call s:toggle_current()
-  elseif a:key ==# '2'
-    call s:toggle_save_output()
-  elseif a:key ==# '3'
-    call s:clear_input()
-  elseif a:key ==# '4'
-    call s:revert_last_change()
   elseif a:key ==# "\<Left>"
     call s:move_input_cursor(-1)
   elseif a:key ==# "\<Right>"
@@ -443,4 +499,3 @@ endfunction
 function! s:text_to_lines(text) abort
   return split(a:text, "\n", 1)
 endfunction
-
