@@ -1,0 +1,436 @@
+*mfplug.txt*        Select project files and ask an LLM from Vim
+
+==============================================================================
+CONTENTS                                                        *mfplug-contents*
+
+    1. Introduction ..................................... |mfplug-introduction|
+    2. Requirements ..................................... |mfplug-requirements|
+    3. Installation ..................................... |mfplug-installation|
+    4. Configuration .................................... |mfplug-configuration|
+    5. Usage ............................................ |mfplug-usage|
+    6. Popup controls ................................... |mfplug-controls|
+    7. Save output mode ................................ |mfplug-save-output|
+    8. Reverting changes ............................... |mfplug-revert|
+    9. History file ..................................... |mfplug-history|
+   10. Path filtering ................................... |mfplug-filtering|
+   11. Troubleshooting ................................. |mfplug-troubleshooting|
+
+==============================================================================
+1. Introduction                                        *mfplug-introduction*
+
+MfPlugin is a Vim plugin for sending selected project files together with a
+free-form prompt to an LLM endpoint.
+
+The plugin opens a popup file picker, lets you choose files or directories,
+collects their contents as context, and sends the resulting prompt to the
+configured API endpoint.
+
+It can be used for tasks such as:
+
+- asking questions about a codebase
+- requesting code review suggestions
+- generating implementation plans
+- applying AI-generated edits back into files
+- reverting the last AI-generated file update
+
+The main command is:
+
+>
+    :Mf
+<
+
+==============================================================================
+2. Requirements                                        *mfplug-requirements*
+
+MfPlugin requires:
+
+- Vim with popup window support: |popup_create()|
+- Vim compiled with Python 3 support: |python3|
+- Python package: requests
+- A compatible LLM API endpoint
+
+Check Vim support with:
+
+>
+    :echo exists('*popup_create')
+    :echo has('python3')
+<
+
+Install the Python dependency with:
+
+>
+    python3 -m pip install requests
+<
+
+==============================================================================
+3. Installation                                        *mfplug-installation*
+
+Using vim-plug:
+
+>
+    Plug 'filematyi/mfplugin'
+<
+
+Then run:
+
+>
+    :PlugInstall
+<
+
+After installation, generate helptags if your plugin manager does not do this
+automatically:
+
+>
+    :helptags ALL
+<
+
+You can then open this help page with:
+
+>
+    :help mfplug
+<
+
+==============================================================================
+4. Configuration                                      *mfplug-configuration*
+
+MfPlugin reads the following Vim variables.
+
+------------------------------------------------------------------------------
+Required variables                                      *mfplug-required-vars*
+
+                                                        *g:mfplugin_url*
+g:mfplugin_url
+        Full URL of the LLM endpoint.
+
+        Example:
+>
+    let g:mfplugin_url = 'https://example.openai.azure.com/openai/responses?api-version=2024-xx-xx'
+<
+
+                                                        *g:mfplugin_api_key*
+g:mfplugin_api_key
+        API key used when calling the endpoint.
+
+        Example:
+>
+    let g:mfplugin_api_key = 'your-api-key'
+<
+
+                                                        *g:mfplugin_model*
+g:mfplugin_model
+        Model name sent in the request payload.
+
+        Example:
+>
+    let g:mfplugin_model = 'gpt-4.1'
+<
+
+------------------------------------------------------------------------------
+Optional variables                                      *mfplug-optional-vars*
+
+                                                        *g:mfplugin_file_blacklist*
+g:mfplugin_file_blacklist
+        List of path substrings ignored when expanding selected directories.
+
+        If unset, the plugin uses a default blacklist containing common
+        generated and local-only paths such as ".git", "node_modules",
+        "__pycache__", ".venv", ".idea", ".vscode", and ".mfhist".
+
+        Example:
+>
+    let g:mfplugin_file_blacklist = [
+          \ '.git',
+          \ 'node_modules',
+          \ '__pycache__',
+          \ '.venv',
+          \ 'dist',
+          \ 'build',
+          \ ]
+<
+
+------------------------------------------------------------------------------
+Example configuration                                  *mfplug-config-example*
+
+>
+    let g:mfplugin_url = 'https://example.openai.azure.com/openai/responses?api-version=2024-xx-xx'
+    let g:mfplugin_api_key = 'your-api-key'
+    let g:mfplugin_model = 'gpt-4.1'
+
+    let g:mfplugin_file_blacklist = [
+          \ '.git',
+          \ 'node_modules',
+          \ '__pycache__',
+          \ '.venv',
+          \ 'dist',
+          \ 'build',
+          \ ]
+<
+
+==============================================================================
+5. Usage                                                    *mfplug-usage*
+
+Open MfPlugin for the current working directory:
+
+>
+    :Mf
+<
+
+Open MfPlugin for a specific directory:
+
+>
+    :Mf /path/to/project
+<
+
+The popup shows files and directories under the selected root directory.
+
+Typical workflow:
+
+1. Run |:Mf|.
+2. Move through the file list with the arrow keys.
+3. Toggle files or directories with <Leader>1.
+4. Type your question or instruction in the input area.
+5. Optionally enable "Save output?" with <Leader>2.
+6. Press <Enter> to submit.
+7. Read the result popup.
+8. Press <Esc> to close the result popup.
+
+Selecting a directory includes files inside that directory recursively, subject
+to blacklist filtering. See |mfplug-filtering|.
+
+==============================================================================
+6. Popup controls                                      *mfplug-controls*
+
+The main popup is keyboard driven.
+
+------------------------------------------------------------------------------
+Main popup controls
+
+    Key                         Action
+    --------------------------------------------------------------------------
+    <Up>                        Move cursor up
+    <Down>                      Move cursor down
+    <Left>                      Move input cursor left
+    <Right>                     Move input cursor right
+    <Leader>1                   Toggle current file or directory
+    <Leader>2                   Toggle "Save output?"
+    <Leader>3                   Clear input
+    <Leader>4                   Revert last saved change
+    <BS>                        Delete character before input cursor
+    <Del> or <C-D>              Delete character under input cursor
+    <Enter>                     Submit request
+    <Esc>                       Close popup
+    Any printable character     Insert into input
+
+The plugin uses your Vim |mapleader| value for <Leader>. If |mapleader| is a
+space, the popup displays it as <Space>.
+
+------------------------------------------------------------------------------
+Result popup controls
+
+    Key                         Action
+    --------------------------------------------------------------------------
+    <Esc>                       Close result popup
+    <Down> or <C-E>             Scroll down
+    <Up> or <C-Y>               Scroll up
+    <PageDown> or <C-F>         Page down
+    <PageUp> or <C-B>           Page up
+    <C-D>                       Half-page down
+    <C-U>                       Half-page up
+    Mouse wheel                 Scroll
+
+==============================================================================
+7. Save output mode                                  *mfplug-save-output*
+
+When "Save output?" is disabled, the plugin displays the LLM response in a
+result popup and does not modify files.
+
+When "Save output?" is enabled, the plugin asks the LLM to respond with file
+blocks in the following format:
+
+>
+    ===
+    ===
+    filepath: path/to/file
+    ===
+    file content
+    ===
+<
+
+MfPlugin parses these file blocks and writes the returned content to disk.
+
+Before writing files, the plugin stores a backup of the original file contents
+in the project's ".mfhist" file. This allows the last saved output operation to
+be reverted with <Leader>4.
+
+Important notes:
+
+- Only parsed file blocks are written.
+- ".mfhist" is managed by the plugin and is never written from LLM output.
+- Duplicate file blocks are skipped.
+- Directories returned as file paths are skipped.
+- If no valid file blocks are found, no files are updated.
+
+==============================================================================
+8. Reverting changes                                      *mfplug-revert*
+
+Press <Leader>4 in the main popup to revert the last saved output operation.
+
+The revert operation uses backup information stored in ".mfhist":
+
+- Files that existed before the save are restored to their previous content.
+- Files that did not exist before the save are deleted.
+- If an error occurs, ".mfhist" is kept so the revert can be attempted again.
+- If the revert succeeds, the consumed backup is cleared from ".mfhist".
+
+Only the last saved output operation can be reverted.
+
+==============================================================================
+9. History file                                         *mfplug-history*
+
+MfPlugin stores project-local state in:
+
+>
+    .mfhist
+<
+
+The history file is created in the root directory passed to |:Mf|, or in the
+current working directory when no argument is provided.
+
+The current history format is JSON:
+
+>
+    {
+      "version": 1,
+      "user_input": "...",
+      "last_change": {
+        "changed_at": "...",
+        "files": []
+      }
+    }
+<
+
+The plugin also supports the older history format where ".mfhist" contained
+only raw prompt text.
+
+The history file is used for:
+
+- restoring the previous prompt when reopening the plugin
+- storing backup data for the last save-output operation
+
+The history file is hidden from the selectable file list.
+
+==============================================================================
+10. Path filtering                                    *mfplug-filtering*
+
+MfPlugin filters paths in two places.
+
+------------------------------------------------------------------------------
+Popup file list filtering
+
+The initial file list excludes:
+
+- paths inside "node_modules"
+- the ".mfhist" history file
+
+Only readable files and directories are shown.
+
+------------------------------------------------------------------------------
+Directory expansion filtering
+
+When a selected directory is submitted, Python expands it recursively. During
+that expansion, paths containing blacklist substrings are skipped.
+
+The default blacklist includes:
+
+>
+    .git
+    node_modules
+    __pycache__
+    .pytest_cache
+    .mypy_cache
+    .ruff_cache
+    .venv
+    venv
+    .idea
+    .vscode
+    .DS_Store
+    .mfhist
+<
+
+Override this list with |g:mfplugin_file_blacklist|.
+
+==============================================================================
+11. Troubleshooting                              *mfplug-troubleshooting*
+
+------------------------------------------------------------------------------
+"This plugin requires Vim with popup support."
+
+Your Vim does not provide |popup_create()|.
+
+Check with:
+
+>
+    :echo exists('*popup_create')
+<
+
+Install or use a newer Vim build with popup support.
+
+------------------------------------------------------------------------------
+"Python support is not available in this Vim."
+
+Your Vim was not compiled with Python 3 support.
+
+Check with:
+
+>
+    :echo has('python3')
+<
+
+Use a Vim build with +python3 support.
+
+------------------------------------------------------------------------------
+Python import error for requests
+
+Install requests for the Python environment used by Vim:
+
+>
+    python3 -m pip install requests
+<
+
+If Vim uses a different Python executable, install requests for that executable.
+
+------------------------------------------------------------------------------
+Missing API configuration
+
+Make sure the required variables are set:
+
+>
+    :echo g:mfplugin_url
+    :echo g:mfplugin_api_key
+    :echo g:mfplugin_model
+<
+
+See |mfplug-configuration|.
+
+------------------------------------------------------------------------------
+No files are updated in save output mode
+
+Possible causes:
+
+- The LLM response did not contain valid file blocks.
+- The response used paths that were skipped.
+- The response attempted to modify ".mfhist".
+- The response used duplicate file paths.
+- The response used a directory path instead of a file path.
+
+See |mfplug-save-output| for the required response format.
+
+------------------------------------------------------------------------------
+The prompt opens with old input
+
+This is expected. MfPlugin restores the previous prompt from ".mfhist".
+
+Use <Leader>3 to clear the input.
+
+==============================================================================
+ vim:tw=78:ts=8:ft=help:norl:
