@@ -154,7 +154,7 @@ function! s:render_lines() abort
   let l:input_display = strcharpart(l:input_display, 0, l:cursor_col) . '|' . strcharpart(l:input_display, l:cursor_col)
 
   call add(l:lines, l:input_display)
-  call add(l:lines, '↓/↑: move | 1: toggle file | 2: toggle save output | 3: clear input | 4: revert last change')
+  call add(l:lines, '↓/↑: move | F1: toggle file | F2: toggle save output | F3: clear input | F4: revert last change')
   call add(l:lines, 'Type: input | <BS>/<Del>: backspace | <C-D>: delete | <Enter>: submit | ESC: quit')
   return l:lines
 endfunction
@@ -343,13 +343,13 @@ function! s:popup_filter(winid, key) abort
     call s:move_cursor(1)
   elseif a:key ==# "\<Up>"
     call s:move_cursor(-1)
-  elseif a:key ==# '1'
+  elseif a:key ==# '\<F1>'
     call s:toggle_current()
-  elseif a:key ==# '2'
+  elseif a:key ==# '\<F2>'
     call s:toggle_save_output()
-  elseif a:key ==# '3'
+  elseif a:key ==# '\<F3>'
     call s:clear_input()
-  elseif a:key ==# '4'
+  elseif a:key ==# '\<F4>'
     call s:revert_last_change()
   elseif a:key ==# "\<Left>"
     call s:move_input_cursor(-1)
