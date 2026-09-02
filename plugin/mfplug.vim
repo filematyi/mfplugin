@@ -50,34 +50,60 @@ function! s:leader_label() abort
   return l:leader
 endfunction
 
-function! s:read_history_input(histfile) abort
+function! s:default_history_state() abort
+  return {
+        \ 'user_input': '',
+        \ 'selected_files': [],
+        \ 'save_output': 0,
+        \ }
+endfunction
+
+function! s:read_history_state(histfile) abort
+  let l:state = s:default_history_state()
+
   if !filereadable(a:histfile)
-    return ''
+    return l:state
   endif
 
   let l:raw = join(readfile(a:histfile), "\n")
 
-  " New .mfhist format is JSON:
-  " {
-  "   "version": 1,
-  "   "user_input": "...",
-  "   "last_change": { ... }
-  " }
-  "
-  " Keep backward compatibility with the old format where .mfhist
-  " contained only the raw user input.
+  " Current .mfhist format is JSON. Keep compatibility with the old format,
+  " where the file contained only the raw user input.
   if exists('*json_decode')
     try
       let l:decoded = json_decode(l:raw)
-      if type(l:decoded) == type({}) && has_key(l:decoded, 'user_input')
-        return type(l:decoded.user_input) == type('') ? l:decoded.user_input : string(l:decoded.user_input)
+
+      if type(l:decoded) == type({})
+        let l:user_input = get(l:decoded, 'user_input', '')
+        let l:state.user_input = type(l:user_input) == type('')
+              \ ? l:user_input
+              \ : string(l:user_input)
+
+        let l:selected_files = get(l:decoded, 'selected_files', [])
+        if type(l:selected_files) == type([])
+          let l:state.selected_files = filter(
+                \ map(copy(l:selected_files),
+                \   'type(v:val) == type("") ? v:val : string(v:val)'),
+                \ 'type(v:val) == type("") && !empty(v:val)')
+        endif
+
+        let l:save_output = get(l:decoded, 'save_output', 0)
+        if type(l:save_output) == type(0)
+              \ || type(l:save_output) == type(v:true)
+          let l:state.save_output = l:save_output ? 1 : 0
+        elseif type(l:save_output) == type('')
+          let l:state.save_output = l:save_output =~? '^\s*\%(1\|true\|yes\|on\)\s*$' ? 1 : 0
+        endif
+
+        return l:state
       endif
     catch
-      " Old raw text format or invalid JSON. Fall through.
+      " Invalid JSON or the old raw-text format. Fall through.
     endtry
   endif
 
-  return l:raw
+  let l:state.user_input = l:raw
+  return l:state
 endfunction
 
 function! s:open_problem_files(root) abort
@@ -94,33 +120,42 @@ function! s:open_problem_files(root) abort
     return
   endif
 
-  " Check for .mfhist in the root directory
   let l:histfile = l:root . '/.mfhist'
-  let l:initial_input = ''
+  let l:history_state = s:default_history_state()
 
   if filereadable(l:histfile)
     echom '.mfhist found: ' . l:histfile
-    let l:initial_input = s:read_history_input(l:histfile)
+    let l:history_state = s:read_history_state(l:histfile)
   else
     echom '.mfhist not found in: ' . l:root
   endif
 
   let l:entries = globpath(l:root, '**/*', 0, 1)
 
-  " Remove anything inside node_modules, including the node_modules directory itself
-  let l:entries = filter(l:entries, 'v:val !~# ''\v(^|[\/\\])node_modules([\/\\]|$)''')
+  " Remove anything inside node_modules, including node_modules itself.
+  let l:entries = filter(
+        \ l:entries,
+        \ 'v:val !~# ''\v(^|[\/\\])node_modules([\/\\]|$)''')
 
-  " Hide the history file from the selectable file list. It is managed by the plugin.
-  let l:entries = filter(l:entries, 'fnamemodify(v:val, ":t") !=# ''.mfhist''')
+  " .mfhist is managed by the plugin and must not be selectable.
+  let l:entries = filter(
+        \ l:entries,
+        \ 'fnamemodify(v:val, ":t") !=# ''.mfhist''')
 
-  " Keep both readable files and directories
-  let l:entries = filter(l:entries, 'filereadable(v:val) || isdirectory(v:val)')
+  let l:entries = filter(
+        \ l:entries,
+        \ 'filereadable(v:val) || isdirectory(v:val)')
 
-  " Convert to paths relative to the chosen root directory
-  let l:entries = map(l:entries, 's:relative_to_root(l:root, v:val)')
+  let l:entries = map(
+        \ l:entries,
+        \ 's:relative_to_root(l:root, v:val)')
 
-  " Optional: add trailing slash to directories for clarity
-  let l:entries = map(l:entries, 'isdirectory(fnamemodify(l:root . "/" . v:val, ":p")) ? v:val . "/" : v:val')
+  " Add a trailing slash to directories. The same value is persisted in
+  " selected_files, so it can be matched exactly on the next invocation.
+  let l:entries = map(
+        \ l:entries,
+        \ 'isdirectory(fnamemodify(l:root . "/" . v:val, ":p"))'
+        \ . ' ? v:val . "/" : v:val')
 
   let l:files = l:entries
   if empty(l:files)
@@ -128,18 +163,28 @@ function! s:open_problem_files(root) abort
     return
   endif
 
+  let l:selected = {}
+  let l:saved_selected_files = get(l:history_state, 'selected_files', [])
+
+  for l:i in range(0, len(l:files) - 1)
+    if index(l:saved_selected_files, l:files[l:i]) >= 0
+      let l:selected[l:i] = 1
+    endif
+  endfor
+
+  let l:initial_input = get(l:history_state, 'user_input', '')
   let l:popup = s:popup_dimensions()
 
   let s:state = {
         \ 'root': l:root,
         \ 'files': l:files,
-        \ 'selected': {},
+        \ 'selected': l:selected,
         \ 'cursor': 0,
         \ 'offset': 0,
         \ 'height': max([1, l:popup.height - 6]),
         \ 'input': l:initial_input,
         \ 'input_cursor': strchars(l:initial_input),
-        \ 'save_output': 0,
+        \ 'save_output': get(l:history_state, 'save_output', 0) ? 1 : 0,
         \ 'pending_leader': 0,
         \ }
 
@@ -166,7 +211,10 @@ function! s:input_len() abort
 endfunction
 
 function! s:clamp_input_cursor() abort
-  let s:state.input_cursor = max([0, min([s:input_len(), get(s:state, 'input_cursor', 0)])])
+  let s:state.input_cursor = max([
+        \ 0,
+        \ min([s:input_len(), get(s:state, 'input_cursor', 0)]),
+        \ ])
 endfunction
 
 function! s:render_lines() abort
@@ -175,24 +223,41 @@ function! s:render_lines() abort
   let l:lines = []
   let l:max = min([len(s:state.files), s:state.offset + s:state.height])
 
-  for l:i in range(s:state.offset, l:max - 1)
-    let l:mark = has_key(s:state.selected, l:i) ? '[x]' : '[ ]'
-    let l:pointer = (l:i == s:state.cursor) ? '>' : ' '
-    call add(l:lines, printf('%s %s %s', l:pointer, l:mark, s:state.files[l:i]))
-  endfor
+  if l:max > s:state.offset
+    for l:i in range(s:state.offset, l:max - 1)
+      let l:mark = has_key(s:state.selected, l:i) ? '[x]' : '[ ]'
+      let l:pointer = l:i == s:state.cursor ? '>' : ' '
+      call add(
+            \ l:lines,
+            \ printf('%s %s %s', l:pointer, l:mark, s:state.files[l:i]))
+    endfor
+  endif
 
   call add(l:lines, repeat('─', 76))
-  call add(l:lines, 'Save output? ' . (s:state.save_output ? '[x]' : '[ ]'))
+  call add(
+        \ l:lines,
+        \ 'Save output? ' . (s:state.save_output ? '[x]' : '[ ]'))
 
   let l:prefix = 'Input: '
   let l:input_display = l:prefix . s:state.input
   let l:cursor_col = strchars(l:prefix) + s:state.input_cursor
-  let l:input_display = strcharpart(l:input_display, 0, l:cursor_col) . '|' . strcharpart(l:input_display, l:cursor_col)
+  let l:input_display =
+        \ strcharpart(l:input_display, 0, l:cursor_col)
+        \ . '|'
+        \ . strcharpart(l:input_display, l:cursor_col)
 
   call add(l:lines, l:input_display)
-  call add(l:lines, '↓/↑: move | <Leader>1: toggle file | <Leader>2: toggle save output')
-  call add(l:lines, '<Leader>3: clear input | <Leader>4: revert last change | Leader: ' . s:leader_label())
-  call add(l:lines, 'Type: input | <BS>/<Del>: backspace | <C-D>: delete | <Enter>: submit | ESC: quit')
+  call add(
+        \ l:lines,
+        \ '↓/↑: move | <Leader>1: toggle file | <Leader>2: toggle save output')
+  call add(
+        \ l:lines,
+        \ '<Leader>3: clear input | <Leader>4: revert last change | Leader: '
+        \ . s:leader_label())
+  call add(
+        \ l:lines,
+        \ 'Type: input | <BS>/<Del>: backspace | <C-D>: delete | <Enter>: submit | ESC: quit')
+
   return l:lines
 endfunction
 
@@ -218,11 +283,13 @@ endfunction
 
 function! s:toggle_current() abort
   let l:i = s:state.cursor
+
   if has_key(s:state.selected, l:i)
     call remove(s:state.selected, l:i)
   else
     let s:state.selected[l:i] = 1
   endif
+
   call s:redraw()
 endfunction
 
@@ -244,6 +311,7 @@ function! s:insert_input_char(char) abort
   let l:after = strcharpart(s:state.input, s:state.input_cursor)
   let s:state.input = l:before . a:char . l:after
   let s:state.input_cursor += strchars(a:char)
+
   call s:redraw()
 endfunction
 
@@ -254,10 +322,14 @@ function! s:backspace_input() abort
     return
   endif
 
-  let l:before = strcharpart(s:state.input, 0, s:state.input_cursor - 1)
+  let l:before = strcharpart(
+        \ s:state.input,
+        \ 0,
+        \ s:state.input_cursor - 1)
   let l:after = strcharpart(s:state.input, s:state.input_cursor)
   let s:state.input = l:before . l:after
   let s:state.input_cursor -= 1
+
   call s:redraw()
 endfunction
 
@@ -271,11 +343,15 @@ function! s:delete_input_char() abort
   let l:before = strcharpart(s:state.input, 0, s:state.input_cursor)
   let l:after = strcharpart(s:state.input, s:state.input_cursor + 1)
   let s:state.input = l:before . l:after
+
   call s:redraw()
 endfunction
 
 function! s:move_input_cursor(delta) abort
-  let s:state.input_cursor = max([0, min([s:input_len(), s:state.input_cursor + a:delta])])
+  let s:state.input_cursor = max([
+        \ 0,
+        \ min([s:input_len(), s:state.input_cursor + a:delta]),
+        \ ])
   call s:redraw()
 endfunction
 
@@ -286,7 +362,9 @@ function! s:show_text_popup(title, text) abort
   let l:lines = ['']
   call extend(l:lines, l:content_lines)
   call extend(l:lines, ['', 'Press <Esc> to close'])
-  call extend(l:lines, ['Use arrows, PgUp/PgDn, mouse wheel to scroll'])
+  call extend(
+        \ l:lines,
+        \ ['Use arrows, PgUp/PgDn, mouse wheel to scroll'])
 
   call popup_create(l:lines, {
         \ 'title': a:title,
@@ -306,7 +384,10 @@ function! s:show_text_popup(title, text) abort
 endfunction
 
 function! s:show_result_popup(selected_files, user_input, save_output) abort
-  let l:python_output = s:call_python_backend(a:selected_files, a:user_input, a:save_output)
+  let l:python_output = s:call_python_backend(
+        \ a:selected_files,
+        \ a:user_input,
+        \ a:save_output)
   call s:show_text_popup(' Results ', l:python_output)
 endfunction
 
@@ -355,15 +436,21 @@ endfunction
 
 function! s:submit() abort
   let l:selected_files = []
+
   for l:i in sort(map(keys(s:state.selected), 'str2nr(v:val)'))
-    call add(l:selected_files, s:state.files[l:i])
+    if l:i >= 0 && l:i < len(s:state.files)
+      call add(l:selected_files, s:state.files[l:i])
+    endif
   endfor
 
   let l:user_input = s:state.input
   let l:save_output = s:state.save_output
 
   call popup_close(s:state.winid)
-  call s:show_result_popup(l:selected_files, l:user_input, l:save_output)
+  call s:show_result_popup(
+        \ l:selected_files,
+        \ l:user_input,
+        \ l:save_output)
 endfunction
 
 function! s:revert_last_change() abort
@@ -442,6 +529,7 @@ function! s:popup_filter(winid, key) abort
   elseif strchars(a:key) == 1
     call s:insert_input_char(a:key)
   endif
+
   return 1
 endfunction
 
@@ -457,12 +545,16 @@ function! s:call_python_backend(selected_files, user_input, save_output) abort
   let g:problem_files_py_root = get(s:state, 'root', getcwd())
 
 python3 << EOF
+import os
 import sys
 import vim
-import os
 
 plugin_dir = vim.vars['problem_files_py_plugin_dir']
-str_plugin_dir = plugin_dir.decode("utf-8") if isinstance(plugin_dir, bytes) else str(plugin_dir)
+str_plugin_dir = (
+    plugin_dir.decode("utf-8")
+    if isinstance(plugin_dir, bytes)
+    else str(plugin_dir)
+)
 python_dir = os.path.join(str_plugin_dir, 'python')
 if python_dir not in sys.path:
     sys.path.insert(0, python_dir)
@@ -471,12 +563,25 @@ from mypythonscript import build_result
 
 selected_files = list(vim.vars['problem_files_py_selected_files'])
 user_input_raw = vim.vars['problem_files_py_user_input']
-user_input = user_input_raw.decode('utf-8') if isinstance(user_input_raw, bytes) else str(user_input_raw)
+user_input = (
+    user_input_raw.decode('utf-8')
+    if isinstance(user_input_raw, bytes)
+    else str(user_input_raw)
+)
 save_output = bool(int(vim.vars['problem_files_py_save_output']))
 root_raw = vim.vars['problem_files_py_root']
-root_path = root_raw.decode('utf-8') if isinstance(root_raw, bytes) else str(root_raw)
+root_path = (
+    root_raw.decode('utf-8')
+    if isinstance(root_raw, bytes)
+    else str(root_raw)
+)
 
-result = build_result(selected_files, user_input, save_output, root_path)
+result = build_result(
+    selected_files,
+    user_input,
+    save_output,
+    root_path,
+)
 vim.vars['problem_files_py_result'] = result
 EOF
 
@@ -492,12 +597,16 @@ function! s:call_python_revert(root) abort
   let g:problem_files_py_root = a:root
 
 python3 << EOF
+import os
 import sys
 import vim
-import os
 
 plugin_dir = vim.vars['problem_files_py_plugin_dir']
-str_plugin_dir = plugin_dir.decode("utf-8") if isinstance(plugin_dir, bytes) else str(plugin_dir)
+str_plugin_dir = (
+    plugin_dir.decode("utf-8")
+    if isinstance(plugin_dir, bytes)
+    else str(plugin_dir)
+)
 python_dir = os.path.join(str_plugin_dir, 'python')
 if python_dir not in sys.path:
     sys.path.insert(0, python_dir)
@@ -505,7 +614,11 @@ if python_dir not in sys.path:
 from mypythonscript import revert_last_change
 
 root_raw = vim.vars['problem_files_py_root']
-root_path = root_raw.decode('utf-8') if isinstance(root_raw, bytes) else str(root_raw)
+root_path = (
+    root_raw.decode('utf-8')
+    if isinstance(root_raw, bytes)
+    else str(root_raw)
+)
 
 result = revert_last_change(root_path)
 vim.vars['problem_files_py_revert_result'] = result
