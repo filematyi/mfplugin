@@ -21,7 +21,7 @@ endfunction
 
 function! s:popup_dimensions() abort
   let l:width = max([1, float2nr(&columns * 0.9)])
-  let l:height = max([1, float2nr(&lines * 0.8)])
+  let l:height = max([1, float2nr(&lines * 0.7)])
 
   return {
         \ 'width': l:width,
