@@ -19,6 +19,18 @@ function! s:relative_to_root(root, path) abort
   return fnamemodify(l:path, ':.')
 endfunction
 
+function! s:popup_dimensions() abort
+  let l:width = max([1, float2nr(&columns * 0.9)])
+  let l:height = max([1, float2nr(&lines * 0.8)])
+
+  return {
+        \ 'width': l:width,
+        \ 'height': l:height,
+        \ 'line': max([1, float2nr((&lines - l:height) / 2.0) + 1]),
+        \ 'col': max([1, float2nr((&columns - l:width) / 2.0) + 1]),
+        \ }
+endfunction
+
 function! s:leader_key() abort
   let l:leader = get(g:, 'mapleader', '\')
   return empty(l:leader) ? '\' : l:leader
@@ -116,13 +128,15 @@ function! s:open_problem_files(root) abort
     return
   endif
 
+  let l:popup = s:popup_dimensions()
+
   let s:state = {
         \ 'root': l:root,
         \ 'files': l:files,
         \ 'selected': {},
         \ 'cursor': 0,
         \ 'offset': 0,
-        \ 'height': 15,
+        \ 'height': max([1, l:popup.height - 6]),
         \ 'input': l:initial_input,
         \ 'input_cursor': strchars(l:initial_input),
         \ 'save_output': 0,
@@ -132,10 +146,12 @@ function! s:open_problem_files(root) abort
   let l:lines = s:render_lines()
   let s:state.winid = popup_create(l:lines, {
         \ 'title': ' MfPlugin ',
-        \ 'line': 2,
-        \ 'col': 5,
-        \ 'minwidth': 80,
-        \ 'minheight': s:state.height + 6,
+        \ 'line': l:popup.line,
+        \ 'col': l:popup.col,
+        \ 'minwidth': l:popup.width,
+        \ 'maxwidth': l:popup.width,
+        \ 'minheight': l:popup.height,
+        \ 'maxheight': l:popup.height,
         \ 'border': [],
         \ 'padding': [0,1,0,1],
         \ 'mapping': 0,
@@ -265,6 +281,7 @@ endfunction
 
 function! s:show_text_popup(title, text) abort
   let l:content_lines = s:text_to_lines(a:text)
+  let l:popup = s:popup_dimensions()
 
   let l:lines = ['']
   call extend(l:lines, l:content_lines)
@@ -273,11 +290,12 @@ function! s:show_text_popup(title, text) abort
 
   call popup_create(l:lines, {
         \ 'title': a:title,
-        \ 'line': 4,
-        \ 'col': 8,
-        \ 'minwidth': 120,
-        \ 'minheight': 12,
-        \ 'maxheight': 40,
+        \ 'line': l:popup.line,
+        \ 'col': l:popup.col,
+        \ 'minwidth': l:popup.width,
+        \ 'maxwidth': l:popup.width,
+        \ 'minheight': l:popup.height,
+        \ 'maxheight': l:popup.height,
         \ 'border': [],
         \ 'padding': [0,1,0,1],
         \ 'mapping': 0,
