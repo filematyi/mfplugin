@@ -647,20 +647,16 @@ def choose_initial_folder(folder: str | None) -> str | None:
 
 
 def main() -> None:
-    import vim
     arguments = parse_arguments()
     folder = choose_initial_folder(arguments.folder)
 
     if not folder:
         return
-    llm_url = vim.vars["mfplugin_llm_url"]
-    llm_api_key = vim.vars["mfplugin_llm_api_key"]
-    llm_model = vim.vars["mfplugin_llm_model"]
 
     config = MfConfig(
-        url=llm_url,
-        api_key=llm_api_key,
-        model=llm_model,
+        url=arguments.url,
+        api_key=arguments.api_key,
+        model=arguments.model,
         timeout_seconds=max(1, arguments.timeout),
     )
 
