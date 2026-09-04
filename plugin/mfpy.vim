@@ -63,7 +63,8 @@ function! s:launch_mfpy() abort
   let l:mfplugin_llm_url = get(g:, 'mfplugin_llm_url', "")
   let l:mfplugin_llm_api_key = get(g:, 'mfplugin_llm_api_key', "")
   let l:mfplugin_llm_model = get(g:, 'mfplugin_llm_model', "")
-
+    
+  echom "url" . l:mfplugin_llm_url
 
   let l:command = [l:python, '-m', 'mfpy', l:folder, '--url', l:mfplugin_llm_url, '--api-key', l:mfplugin_llm_api_key, '--model', l:mfplugin_llm_model]
   let s:mfpy_job = job_start(l:command, {
