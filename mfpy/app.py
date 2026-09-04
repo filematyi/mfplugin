@@ -9,10 +9,12 @@ from tkinter import filedialog, messagebox, ttk
 
 try:
     from .backend import MfBackend, MfConfig
-    from .history_diff import build_last_change_diff
+    from .diff_view import show_diff_report
+    from .history_diff import DiffReport, build_last_change_comparison
 except ImportError:
     from backend import MfBackend, MfConfig
-    from history_diff import build_last_change_diff
+    from diff_view import show_diff_report
+    from history_diff import DiffReport, build_last_change_comparison
 
 
 class MfApplication(tk.Tk):
@@ -463,7 +465,7 @@ class MfApplication(tk.Tk):
 
     def _diff_worker(self) -> None:
         try:
-            result = build_last_change_diff(self.backend)
+            result = build_last_change_comparison(self.backend)
         except Exception as error:
             self.after(
                 0,
@@ -475,13 +477,9 @@ class MfApplication(tk.Tk):
 
         self.after(0, self._diff_complete, result)
 
-    def _diff_complete(self, result: str) -> None:
+    def _diff_complete(self, result: DiffReport) -> None:
         self.set_busy(False, "Comparison completed")
-        self.show_result(
-            "Changes from previous version",
-            result,
-            wrap="none",
-        )
+        show_diff_report(self, result)
 
     def revert_last_change(self) -> None:
         if self.busy:
