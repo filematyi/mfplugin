@@ -9,8 +9,10 @@ from tkinter import filedialog, messagebox, ttk
 
 try:
     from .backend import MfBackend, MfConfig
+    from .history_diff import build_last_change_diff
 except ImportError:
     from backend import MfBackend, MfConfig
+    from history_diff import build_last_change_diff
 
 
 class MfApplication(tk.Tk):
@@ -196,12 +198,19 @@ class MfApplication(tk.Tk):
         )
         self.progress.grid(row=0, column=2, padx=15, sticky="e")
 
+        self.diff_button = ttk.Button(
+            controls,
+            text="Show changes",
+            command=self.show_last_change_diff,
+        )
+        self.diff_button.grid(row=0, column=3, padx=(0, 8))
+
         self.revert_button = ttk.Button(
             controls,
             text="Revert last change",
             command=self.revert_last_change,
         )
-        self.revert_button.grid(row=0, column=3, padx=(0, 8))
+        self.revert_button.grid(row=0, column=4, padx=(0, 8))
 
         self.submit_button = ttk.Button(
             controls,
@@ -209,7 +218,7 @@ class MfApplication(tk.Tk):
             style="Primary.TButton",
             command=self.submit,
         )
-        self.submit_button.grid(row=0, column=4)
+        self.submit_button.grid(row=0, column=5)
 
         status_bar = ttk.Label(
             self,
@@ -365,6 +374,7 @@ class MfApplication(tk.Tk):
 
         self.submit_button.configure(state=state)
         self.revert_button.configure(state=state)
+        self.diff_button.configure(state=state)
         self.folder_entry.configure(state=state)
         self.save_checkbox.configure(state=state)
 
@@ -440,6 +450,39 @@ class MfApplication(tk.Tk):
 
         self.show_result("Results", result)
 
+    def show_last_change_diff(self) -> None:
+        if self.busy:
+            return
+
+        self.set_busy(True, "Comparing files with the previous version…")
+
+        threading.Thread(
+            target=self._diff_worker,
+            daemon=True,
+        ).start()
+
+    def _diff_worker(self) -> None:
+        try:
+            result = build_last_change_diff(self.backend)
+        except Exception as error:
+            self.after(
+                0,
+                self._operation_failed,
+                "Show changes failed",
+                error,
+            )
+            return
+
+        self.after(0, self._diff_complete, result)
+
+    def _diff_complete(self, result: str) -> None:
+        self.set_busy(False, "Comparison completed")
+        self.show_result(
+            "Changes from previous version",
+            result,
+            wrap="none",
+        )
+
     def revert_last_change(self) -> None:
         if self.busy:
             return
@@ -480,7 +523,12 @@ class MfApplication(tk.Tk):
         self.set_busy(False, str(error))
         messagebox.showerror(title, str(error), parent=self)
 
-    def show_result(self, title: str, content: str) -> None:
+    def show_result(
+        self,
+        title: str,
+        content: str,
+        wrap: str = "word",
+    ) -> None:
         window = tk.Toplevel(self)
         window.title(title)
         window.geometry("900x650")
@@ -492,9 +540,14 @@ class MfApplication(tk.Tk):
 
         text = tk.Text(
             window,
-            wrap="word",
+            wrap=wrap,
             padx=10,
             pady=10,
+            font=(
+                "TkFixedFont"
+                if wrap == "none"
+                else "TkDefaultFont"
+            ),
         )
         vertical = ttk.Scrollbar(
             window,
