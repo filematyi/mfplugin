@@ -652,7 +652,6 @@ def main() -> None:
 
     if not folder:
         return
-    raise Exception(str(arguments))
     config = MfConfig(
         url=arguments.url,
         api_key=arguments.api_key,
