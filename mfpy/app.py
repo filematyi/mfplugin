@@ -4,6 +4,7 @@ import argparse
 import os
 import threading
 import tkinter as tk
+from dataclasses import replace
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -31,6 +32,7 @@ class MfApplication(tk.Tk):
         self.busy = False
 
         self.folder_var = tk.StringVar(value=str(self.backend.root))
+        self.model_var = tk.StringVar(value=config.model)
         self.save_output_var = tk.BooleanVar(value=False)
         self.status_var = tk.StringVar(value="Ready")
 
@@ -74,6 +76,24 @@ class MfApplication(tk.Tk):
             text="Browse…",
             command=self.browse_folder,
         ).grid(row=0, column=3, padx=(8, 0))
+
+        ttk.Label(folder_frame, text="Model:").grid(
+            row=1,
+            column=0,
+            padx=(0, 8),
+            pady=(8, 0),
+        )
+        self.model_entry = ttk.Entry(
+            folder_frame,
+            textvariable=self.model_var,
+        )
+        self.model_entry.grid(
+            row=1,
+            column=1,
+            columnspan=3,
+            sticky="ew",
+            pady=(8, 0),
+        )
 
         files_frame = ttk.LabelFrame(
             self,
@@ -378,6 +398,7 @@ class MfApplication(tk.Tk):
         self.revert_button.configure(state=state)
         self.diff_button.configure(state=state)
         self.folder_entry.configure(state=state)
+        self.model_entry.configure(state=state)
         self.save_checkbox.configure(state=state)
 
         if busy:
@@ -401,8 +422,11 @@ class MfApplication(tk.Tk):
             )
             return
 
+        model = self.model_var.get().strip()
+        request_config = replace(self.config_data, model=model)
+
         try:
-            self.config_data.validate()
+            request_config.validate()
         except Exception as error:
             messagebox.showerror(
                 "LLM configuration error",
@@ -410,6 +434,9 @@ class MfApplication(tk.Tk):
                 parent=self,
             )
             return
+
+        self.config_data = request_config
+        self.backend.config = request_config
 
         selected_files = sorted(self.checked_paths)
         save_output = self.save_output_var.get()
@@ -616,7 +643,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         default=environment.model,
-        help="LLM model name. Defaults to MFPLUGIN_MODEL.",
+        help="Initial LLM model name. Defaults to MFPLUGIN_MODEL.",
     )
     parser.add_argument(
         "--timeout",
