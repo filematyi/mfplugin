@@ -17,6 +17,8 @@ try:
     from .behaviors import behaviors as REGISTERED_BEHAVIORS
 except ImportError:
     from behaviors import behaviors as REGISTERED_BEHAVIORS
+except:
+    from mfpy.behaviors import behaviors as REGISTERED_BEHAVIORS
 
 
 FILE_BLOCK_PATTERN = re.compile(
