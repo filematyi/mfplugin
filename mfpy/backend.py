@@ -378,7 +378,7 @@ class MfBackend:
             prompt.extend(
                 [
                     "===",
-                    "This is the list of files and their contant as context:",
+                    "This is the list of files and their content as context:",
                 ]
             )
 
@@ -399,6 +399,8 @@ class MfBackend:
                     "The user wants you to save the output into files.",
                     "That requires a strict structure in your response.",
                     "Your response must follow this structure for each file.",
+                    "Never return with only the changed part of the code, return the full content of the file.",
+                    "file_content cannot contain any markdown symbols like ``` from the beginning and the end."
                     "===\n===\nfilepath: <path>\n===\n"
                     "<file content>\n===\n",
                 ]
