@@ -13,6 +13,11 @@ from urllib.parse import parse_qs, urlparse
 
 import requests
 
+try:
+    from .behaviors import behaviors as REGISTERED_BEHAVIORS
+except ImportError:
+    from behaviors import behaviors as REGISTERED_BEHAVIORS
+
 
 FILE_BLOCK_PATTERN = re.compile(
     r"(?:^===\s*\n|^)"
@@ -74,7 +79,6 @@ class MfConfig:
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValueError("The LLM URL must be a valid HTTP or HTTPS URL.")
 
-        # Parse the query for compatibility with endpoints using api-version.
         parse_qs(parsed.query)
 
 
@@ -103,9 +107,10 @@ class MfBackend:
     @staticmethod
     def default_history() -> dict:
         return {
-            "version": 2,
+            "version": 3,
             "user_input": "",
             "selected_files": [],
+            "selected_behaviors": [],
             "save_output": False,
             "last_change": {
                 "changed_at": "",
@@ -129,6 +134,14 @@ class MfBackend:
             result.append(path)
 
         return result
+
+    @classmethod
+    def normalize_behavior_names(cls, value) -> list[str]:
+        return [
+            name
+            for name in cls.normalize_string_list(value)
+            if name in REGISTERED_BEHAVIORS
+        ]
 
     def load_history(self) -> dict:
         if not self.history_path.is_file():
@@ -159,6 +172,9 @@ class MfBackend:
         history["selected_files"] = self.normalize_string_list(
             parsed.get("selected_files", [])
         )
+        history["selected_behaviors"] = self.normalize_behavior_names(
+            parsed.get("selected_behaviors", [])
+        )
         history["save_output"] = bool(parsed.get("save_output", False))
 
         last_change = parsed.get("last_change", {})
@@ -185,6 +201,9 @@ class MfBackend:
         )
         data["selected_files"] = self.normalize_string_list(
             history.get("selected_files", [])
+        )
+        data["selected_behaviors"] = self.normalize_behavior_names(
+            history.get("selected_behaviors", [])
         )
         data["save_output"] = bool(history.get("save_output", False))
 
@@ -361,16 +380,45 @@ class MfBackend:
         selected_files: list[str],
         user_input: str,
         save_output: bool,
+        selected_behaviors: Iterable[str] | None = None,
     ) -> str:
+        behavior_names = self.normalize_behavior_names(
+            list(selected_behaviors or [])
+        )
+
         prompt = [
             "You are an enchanced AI assistant. Your task is to help a "
             "human to find answers to his questions.",
             "Sometimes its coding related question, sometimes some basic "
             "information what they need.",
-            "===",
-            f"The User Input and Question: {user_input}",
-            "===",
         ]
+
+        if behavior_names:
+            prompt.extend(
+                [
+                    "===",
+                    "Additional system behavior instructions:",
+                ]
+            )
+
+            for behavior_name in behavior_names:
+                behavior_content = REGISTERED_BEHAVIORS[behavior_name]
+                prompt.extend(
+                    [
+                        "===",
+                        f"Behavior: {behavior_name}",
+                        "===",
+                        str(behavior_content).strip(),
+                    ]
+                )
+
+        prompt.extend(
+            [
+                "===",
+                f"The User Input and Question: {user_input}",
+                "===",
+            ]
+        )
 
         resolved_files = self.resolve_selected_files(selected_files)
 
@@ -607,22 +655,27 @@ class MfBackend:
         selected_files: list[str],
         user_input: str,
         save_output: bool,
+        selected_behaviors: Iterable[str] | None = None,
     ) -> str:
         selected_files = self.normalize_string_list(selected_files)
+        selected_behaviors = self.normalize_behavior_names(
+            list(selected_behaviors or [])
+        )
         save_output = bool(save_output)
 
         history = self.load_history()
         history["user_input"] = str(user_input)
         history["selected_files"] = selected_files
+        history["selected_behaviors"] = selected_behaviors
         history["save_output"] = save_output
 
-        # Persist UI state even when the request subsequently fails.
         self.write_history(history)
 
         prompt = self.build_prompt(
             selected_files,
             str(user_input),
             save_output,
+            selected_behaviors,
         )
         response = self.send_llm_call(prompt)
 
@@ -644,13 +697,13 @@ class MfBackend:
             history = self.load_history()
             history["user_input"] = str(user_input)
             history["selected_files"] = selected_files
+            history["selected_behaviors"] = selected_behaviors
             history["save_output"] = save_output
             history["last_change"] = {
                 "changed_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
                 "files": backups,
             }
 
-            # Write backups before changing any target file.
             self.write_history(history)
 
             for absolute_path, content, _display_path in files_to_write:
@@ -777,9 +830,9 @@ class MfBackend:
             lines.extend(
                 [
                     "Last change reverted successfully.",
-                    ".mfhist input, selected files, and save-output "
-                    "setting were kept, and the consumed backup was "
-                    "cleared.",
+                    ".mfhist input, selected files, selected behaviors, "
+                    "and save-output setting were kept, and the consumed "
+                    "backup was cleared.",
                 ]
             )
 

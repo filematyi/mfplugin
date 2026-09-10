@@ -10,10 +10,12 @@ from tkinter import filedialog, messagebox, ttk
 
 try:
     from .backend import MfBackend, MfConfig
+    from .behaviors import behaviors as REGISTERED_BEHAVIORS
     from .diff_view import show_diff_report
     from .history_diff import DiffReport, build_last_change_comparison
 except ImportError:
     from backend import MfBackend, MfConfig
+    from behaviors import behaviors as REGISTERED_BEHAVIORS
     from diff_view import show_diff_report
     from history_diff import DiffReport, build_last_change_comparison
 
@@ -35,6 +37,11 @@ class MfApplication(tk.Tk):
         self.model_var = tk.StringVar(value=config.model)
         self.save_output_var = tk.BooleanVar(value=False)
         self.status_var = tk.StringVar(value="Ready")
+        self.behavior_display_var = tk.StringVar(value="None")
+        self.behavior_vars = {
+            name: tk.BooleanVar(value=False)
+            for name in REGISTERED_BEHAVIORS
+        }
 
         self._configure_styles()
         self._build_ui()
@@ -94,6 +101,45 @@ class MfApplication(tk.Tk):
             sticky="ew",
             pady=(8, 0),
         )
+
+        ttk.Label(folder_frame, text="Behaviors:").grid(
+            row=2,
+            column=0,
+            padx=(0, 8),
+            pady=(8, 0),
+        )
+
+        self.behavior_button = ttk.Menubutton(
+            folder_frame,
+            textvariable=self.behavior_display_var,
+        )
+        self.behavior_button.grid(
+            row=2,
+            column=1,
+            columnspan=3,
+            sticky="ew",
+            pady=(8, 0),
+        )
+
+        self.behavior_menu = tk.Menu(
+            self.behavior_button,
+            tearoff=False,
+        )
+        self.behavior_button.configure(menu=self.behavior_menu)
+
+        if REGISTERED_BEHAVIORS:
+            for behavior_name in REGISTERED_BEHAVIORS:
+                self.behavior_menu.add_checkbutton(
+                    label=behavior_name,
+                    variable=self.behavior_vars[behavior_name],
+                    command=self.update_behavior_label,
+                )
+        else:
+            self.behavior_menu.add_command(
+                label="No behaviors registered",
+                state="disabled",
+            )
+            self.behavior_button.configure(state="disabled")
 
         files_frame = ttk.LabelFrame(
             self,
@@ -253,6 +299,25 @@ class MfApplication(tk.Tk):
 
         self.bind("<Control-Return>", lambda _event: self.submit())
 
+    def selected_behavior_names(self) -> list[str]:
+        return [
+            name
+            for name in REGISTERED_BEHAVIORS
+            if self.behavior_vars[name].get()
+        ]
+
+    def update_behavior_label(self) -> None:
+        selected = self.selected_behavior_names()
+
+        if not selected:
+            label = "None"
+        elif len(selected) <= 2:
+            label = ", ".join(selected)
+        else:
+            label = f"{len(selected)} behaviors selected"
+
+        self.behavior_display_var.set(label)
+
     def browse_folder(self) -> None:
         selected = filedialog.askdirectory(
             parent=self,
@@ -287,6 +352,13 @@ class MfApplication(tk.Tk):
             history = self.backend.load_history()
             self.checked_paths = set(history["selected_files"])
             self.save_output_var.set(bool(history["save_output"]))
+
+            selected_behaviors = set(
+                history.get("selected_behaviors", [])
+            )
+            for name, variable in self.behavior_vars.items():
+                variable.set(name in selected_behaviors)
+            self.update_behavior_label()
 
             self.input_text.delete("1.0", "end")
             self.input_text.insert("1.0", history["user_input"])
@@ -401,6 +473,9 @@ class MfApplication(tk.Tk):
         self.model_entry.configure(state=state)
         self.save_checkbox.configure(state=state)
 
+        if REGISTERED_BEHAVIORS:
+            self.behavior_button.configure(state=state)
+
         if busy:
             self.progress.start(10)
         else:
@@ -439,19 +514,26 @@ class MfApplication(tk.Tk):
         self.backend.config = request_config
 
         selected_files = sorted(self.checked_paths)
+        selected_behaviors = self.selected_behavior_names()
         save_output = self.save_output_var.get()
 
         self.set_busy(True, "Calling the LLM…")
 
         threading.Thread(
             target=self._submit_worker,
-            args=(selected_files, user_input, save_output),
+            args=(
+                selected_files,
+                selected_behaviors,
+                user_input,
+                save_output,
+            ),
             daemon=True,
         ).start()
 
     def _submit_worker(
         self,
         selected_files: list[str],
+        selected_behaviors: list[str],
         user_input: str,
         save_output: bool,
     ) -> None:
@@ -460,6 +542,7 @@ class MfApplication(tk.Tk):
                 selected_files,
                 user_input,
                 save_output,
+                selected_behaviors,
             )
         except Exception as error:
             self.after(0, self._operation_failed, "LLM request failed", error)
