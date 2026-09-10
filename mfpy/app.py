@@ -10,12 +10,12 @@ from tkinter import filedialog, messagebox, ttk
 
 try:
     from .backend import MfBackend, MfConfig
-    from .behaviors import behaviors as REGISTERED_BEHAVIORS
+    from .behaviors.collection import behaviors as REGISTERED_BEHAVIORS
     from .diff_view import show_diff_report
     from .history_diff import DiffReport, build_last_change_comparison
 except ImportError:
     from backend import MfBackend, MfConfig
-    from behaviors import behaviors as REGISTERED_BEHAVIORS
+    from behaviors.collection import behaviors as REGISTERED_BEHAVIORS
     from diff_view import show_diff_report
     from history_diff import DiffReport, build_last_change_comparison
 
