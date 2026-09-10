@@ -14,7 +14,7 @@ from urllib.parse import parse_qs, urlparse
 import requests
 
 try:
-    from .behaviors import behaviors as REGISTERED_BEHAVIORS
+    from .behaviors.__init__ import behaviors as REGISTERED_BEHAVIORS
 except ImportError:
     from mfpy.behaviors import behaviors as REGISTERED_BEHAVIORS
 except:
