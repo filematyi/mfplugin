@@ -14,11 +14,11 @@ from urllib.parse import parse_qs, urlparse
 import requests
 
 try:
-    from .behaviors.__init__ import behaviors as REGISTERED_BEHAVIORS
+    from .behaviors.collection import behaviors as REGISTERED_BEHAVIORS
 except ImportError:
-    from mfpy.behaviors import behaviors as REGISTERED_BEHAVIORS
-except:
-    from mfpy.behaviors import behaviors as REGISTERED_BEHAVIORS
+    from behaviors.collection import behaviors as REGISTERED_BEHAVIORS
+except Exception:
+    from mfpy.behaviors.collection import behaviors as REGISTERED_BEHAVIORS
 
 
 FILE_BLOCK_PATTERN = re.compile(
