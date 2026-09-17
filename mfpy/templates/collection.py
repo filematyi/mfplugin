@@ -1,0 +1,8 @@
+"""Registered input templates."""
+
+from mfpy.templates.example import template as example_template
+
+
+templates = {
+    "Feature implementation": example_template,
+}

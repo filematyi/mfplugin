@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QCheckBox,
+    QComboBox,
     QDialog,
     QFileDialog,
     QFrame,
@@ -37,14 +38,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-try:
-    from .backend import MfBackend, MfConfig
-    from .behaviors.collection import behaviors as REGISTERED_BEHAVIORS
-    from .history_diff import DiffReport, build_last_change_comparison
-except ImportError:
-    from backend import MfBackend, MfConfig
-    from behaviors.collection import behaviors as REGISTERED_BEHAVIORS
-    from history_diff import DiffReport, build_last_change_comparison
+from mfpy.backend import MfBackend, MfConfig
+from mfpy.behaviors.collection import behaviors as REGISTERED_BEHAVIORS
+from mfpy.history_diff import DiffReport, build_last_change_comparison
+from mfpy.templates.collection import templates as REGISTERED_TEMPLATES
 
 
 DARK_STYLESHEET = """
@@ -98,6 +95,7 @@ QLabel#StatusBar {
 }
 
 QLineEdit,
+QComboBox,
 QPlainTextEdit,
 QTreeWidget {
     background-color: #0f172a;
@@ -110,9 +108,22 @@ QTreeWidget {
 }
 
 QLineEdit:focus,
+QComboBox:focus,
 QPlainTextEdit:focus,
 QTreeWidget:focus {
     border: 1px solid #3b82f6;
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 28px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #172033;
+    border: 1px solid #334155;
+    color: #e5e7eb;
+    selection-background-color: #2563eb;
 }
 
 QTreeWidget {
@@ -169,6 +180,7 @@ QToolButton:pressed {
 QPushButton:disabled,
 QToolButton:disabled,
 QLineEdit:disabled,
+QComboBox:disabled,
 QCheckBox:disabled {
     color: #64748b;
     background-color: #172033;
@@ -431,6 +443,27 @@ class MfApplication(QMainWindow):
         input_group = QGroupBox("Input / question")
         input_layout = QVBoxLayout(input_group)
         input_layout.setContentsMargins(10, 16, 10, 10)
+        input_layout.setSpacing(8)
+
+        template_layout = QHBoxLayout()
+        template_layout.addWidget(QLabel("Template"))
+
+        self.template_combo = QComboBox()
+        self.template_combo.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.template_combo.addItem("Select a template…", None)
+
+        for template_name in REGISTERED_TEMPLATES:
+            self.template_combo.addItem(template_name, template_name)
+
+        if not REGISTERED_TEMPLATES:
+            self.template_combo.setEnabled(False)
+
+        self.template_combo.activated.connect(self.apply_template)
+        template_layout.addWidget(self.template_combo, 1)
+        input_layout.addLayout(template_layout)
 
         self.input_text = QPlainTextEdit()
         self.input_text.setPlaceholderText(
@@ -528,6 +561,20 @@ class MfApplication(QMainWindow):
             label = f"{len(selected)} behaviors selected"
 
         self.behavior_button.setText(label)
+
+    def apply_template(self, index: int) -> None:
+        """Copy the selected template into the editable input field."""
+        template_name = self.template_combo.itemData(index)
+        if not isinstance(template_name, str):
+            return
+
+        content = REGISTERED_TEMPLATES.get(template_name)
+        if content is None:
+            return
+
+        self.input_text.setPlainText(content.strip())
+        self.input_text.setFocus()
+        self.set_status(f"Loaded template: {template_name}")
 
     def browse_folder(self) -> None:
         selected = QFileDialog.getExistingDirectory(
@@ -667,6 +714,7 @@ class MfApplication(QMainWindow):
 
     def clear_input(self) -> None:
         self.input_text.clear()
+        self.template_combo.setCurrentIndex(0)
         self.input_text.setFocus()
 
     def update_selection_label(self) -> None:
@@ -695,13 +743,18 @@ class MfApplication(QMainWindow):
             self.select_all_button,
             self.clear_selection_button,
             self.refresh_button,
+            self.clear_input_button,
         ):
             widget.setEnabled(enabled)
 
         if REGISTERED_BEHAVIORS:
             self.behavior_button.setEnabled(enabled)
 
+        if REGISTERED_TEMPLATES:
+            self.template_combo.setEnabled(enabled)
+
         self.tree.setEnabled(enabled)
+        self.input_text.setEnabled(enabled)
 
         if busy:
             self.progress.show()
