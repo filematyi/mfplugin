@@ -38,7 +38,7 @@ class MfBackend:
         blacklist_substrings: Iterable[str] | None = None,
     ) -> None:
         """Initialize backend services."""
-        self.config = config
+        self._config = config
         self.filesystem_service = FileSystemService(
             root_path,
             blacklist_substrings,
@@ -68,6 +68,17 @@ class MfBackend:
             self.llm_service,
             self.file_change_service,
         )
+
+    @property
+    def config(self) -> MfConfig:
+        """Return the active LLM configuration."""
+        return self._config
+
+    @config.setter
+    def config(self, config: MfConfig) -> None:
+        """Update configuration used by subsequent LLM requests."""
+        self._config = config
+        self.llm_service.config = config
 
     @property
     def history_path(self) -> Path:
