@@ -10,4 +10,5 @@ Guideline:
     - schemas are separated from code implementation into dedicated modules.
     - avoid to use try..except all the time, replace it with better error handling
     - avoid highly nested implementation
+    - always use full imports not relative paths
 """

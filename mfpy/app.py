@@ -2,311 +2,555 @@ from __future__ import annotations
 
 import argparse
 import os
+import pprint
 import threading
-import tkinter as tk
-from dataclasses import replace
+from dataclasses import asdict, is_dataclass, replace
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from typing import Any
 
-try:
-    from .backend import MfBackend, MfConfig
-    from .behaviors.collection import behaviors as REGISTERED_BEHAVIORS
-    from .diff_view import show_diff_report
-    from .history_diff import DiffReport, build_last_change_comparison
-except ImportError:
-    from backend import MfBackend, MfConfig
-    from behaviors.collection import behaviors as REGISTERED_BEHAVIORS
-    from diff_view import show_diff_report
-    from history_diff import DiffReport, build_last_change_comparison
+from PyQt6.QtCore import QEvent, QObject, Qt, pyqtSignal
+from PyQt6.QtGui import QAction, QColor, QFontDatabase, QKeySequence, QShortcut
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QFrame,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMenu,
+    QMessageBox,
+    QPlainTextEdit,
+    QProgressBar,
+    QPushButton,
+    QSizePolicy,
+    QToolButton,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
+from mfpy.backend import MfBackend, MfConfig
+from mfpy.behaviors.collection import behaviors as REGISTERED_BEHAVIORS
+from mfpy.history_diff import DiffReport, build_last_change_comparison
+from mfpy.templates.collection import templates as REGISTERED_TEMPLATES
 
 
-class MfApplication(tk.Tk):
+DARK_STYLESHEET = """
+QWidget {
+    background-color: #111827;
+    color: #e5e7eb;
+    font-family: "Segoe UI", "Inter", sans-serif;
+    font-size: 13px;
+}
+
+QMainWindow {
+    background-color: #0b1120;
+}
+
+QFrame#Card,
+QGroupBox {
+    background-color: #151e2e;
+    border: 1px solid #263246;
+    border-radius: 10px;
+}
+
+QGroupBox {
+    margin-top: 12px;
+    padding: 14px 10px 10px 10px;
+    font-weight: 600;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 14px;
+    padding: 0 6px;
+    color: #93c5fd;
+}
+
+QLabel#Title {
+    color: #f8fafc;
+    font-size: 22px;
+    font-weight: 700;
+}
+
+QLabel#Subtitle,
+QLabel#Muted {
+    color: #94a3b8;
+}
+
+QLabel#StatusBar {
+    background-color: #0f172a;
+    border-top: 1px solid #263246;
+    color: #94a3b8;
+    padding: 7px 10px;
+}
+
+QLineEdit,
+QComboBox,
+QPlainTextEdit,
+QTreeWidget {
+    background-color: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 7px;
+    color: #e5e7eb;
+    padding: 7px;
+    selection-background-color: #2563eb;
+    selection-color: #ffffff;
+}
+
+QLineEdit:focus,
+QComboBox:focus,
+QPlainTextEdit:focus,
+QTreeWidget:focus {
+    border: 1px solid #3b82f6;
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 28px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #172033;
+    border: 1px solid #334155;
+    color: #e5e7eb;
+    selection-background-color: #2563eb;
+}
+
+QTreeWidget {
+    padding: 0;
+    outline: none;
+    alternate-background-color: #131d2d;
+}
+
+QTreeWidget::item {
+    min-height: 30px;
+    padding: 2px 6px;
+}
+
+QTreeWidget::item:hover {
+    background-color: #1e293b;
+}
+
+QTreeWidget::item:selected {
+    background-color: #1d4ed8;
+    color: #ffffff;
+}
+
+QHeaderView::section {
+    background-color: #1e293b;
+    color: #cbd5e1;
+    border: none;
+    border-right: 1px solid #334155;
+    border-bottom: 1px solid #334155;
+    padding: 8px;
+    font-weight: 600;
+}
+
+QPushButton,
+QToolButton {
+    background-color: #243047;
+    border: 1px solid #3a4964;
+    border-radius: 7px;
+    color: #e5e7eb;
+    min-height: 20px;
+    padding: 7px 12px;
+}
+
+QPushButton:hover,
+QToolButton:hover {
+    background-color: #334155;
+    border-color: #64748b;
+}
+
+QPushButton:pressed,
+QToolButton:pressed {
+    background-color: #1e293b;
+}
+
+QPushButton:disabled,
+QToolButton:disabled,
+QLineEdit:disabled,
+QComboBox:disabled,
+QCheckBox:disabled {
+    color: #64748b;
+    background-color: #172033;
+    border-color: #263246;
+}
+
+QPushButton#PrimaryButton {
+    background-color: #2563eb;
+    border-color: #3b82f6;
+    color: #ffffff;
+    font-weight: 700;
+    padding: 8px 18px;
+}
+
+QPushButton#PrimaryButton:hover {
+    background-color: #3b82f6;
+}
+
+QPushButton#DangerButton {
+    background-color: #3f1d2a;
+    border-color: #7f1d1d;
+    color: #fecaca;
+}
+
+QPushButton#DangerButton:hover {
+    background-color: #7f1d1d;
+}
+
+QCheckBox {
+    spacing: 8px;
+}
+
+QCheckBox::indicator {
+    width: 17px;
+    height: 17px;
+}
+
+QMenu {
+    background-color: #172033;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 5px;
+}
+
+QMenu::item {
+    border-radius: 4px;
+    padding: 7px 28px 7px 10px;
+}
+
+QMenu::item:selected {
+    background-color: #2563eb;
+}
+
+QProgressBar {
+    background-color: #172033;
+    border: 1px solid #334155;
+    border-radius: 5px;
+    height: 9px;
+    text-align: center;
+}
+
+QProgressBar::chunk {
+    background-color: #3b82f6;
+    border-radius: 4px;
+}
+
+QScrollBar:vertical {
+    background: #0f172a;
+    border: none;
+    width: 12px;
+    margin: 0;
+}
+
+QScrollBar::handle:vertical {
+    background: #475569;
+    border-radius: 6px;
+    min-height: 24px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #64748b;
+}
+
+QScrollBar:horizontal {
+    background: #0f172a;
+    border: none;
+    height: 12px;
+    margin: 0;
+}
+
+QScrollBar::handle:horizontal {
+    background: #475569;
+    border-radius: 6px;
+    min-width: 24px;
+}
+
+QScrollBar::add-line,
+QScrollBar::sub-line {
+    width: 0;
+    height: 0;
+}
+"""
+
+
+class WorkerSignals(QObject):
+    submit_complete = pyqtSignal(str, bool)
+    diff_complete = pyqtSignal(object)
+    revert_complete = pyqtSignal(str)
+    operation_failed = pyqtSignal(str, str)
+
+
+class MfApplication(QMainWindow):
     def __init__(self, folder_path: str, config: MfConfig) -> None:
         super().__init__()
 
-        self.title("MfPlugin")
-        self.geometry("1050x760")
-        self.minsize(720, 520)
+        self.setWindowTitle("MfPlugin")
+        self.resize(1100, 800)
+        self.setMinimumSize(760, 560)
 
         self.config_data = config
         self.backend = MfBackend(folder_path, config)
         self.checked_paths: set[str] = set()
         self.busy = False
+        self.behavior_actions: dict[str, QAction] = {}
 
-        self.folder_var = tk.StringVar(value=str(self.backend.root))
-        self.model_var = tk.StringVar(value=config.model)
-        self.save_output_var = tk.BooleanVar(value=False)
-        self.status_var = tk.StringVar(value="Ready")
-        self.behavior_display_var = tk.StringVar(value="None")
-        self.behavior_vars = {
-            name: tk.BooleanVar(value=False)
-            for name in REGISTERED_BEHAVIORS
-        }
+        self.signals = WorkerSignals()
+        self.signals.submit_complete.connect(self._submit_complete)
+        self.signals.diff_complete.connect(self._diff_complete)
+        self.signals.revert_complete.connect(self._revert_complete)
+        self.signals.operation_failed.connect(self._operation_failed)
 
-        self._configure_styles()
         self._build_ui()
         self.load_folder_state()
 
-        self.protocol("WM_DELETE_WINDOW", self.destroy)
-
-    def _configure_styles(self) -> None:
-        style = ttk.Style(self)
-        style.configure("Treeview", rowheight=25)
-        style.configure("Primary.TButton", padding=(12, 7))
-
     def _build_ui(self) -> None:
-        self.columnconfigure(0, weight=1)
-        self.rowconfigure(1, weight=3)
-        self.rowconfigure(3, weight=2)
+        central = QWidget()
+        root_layout = QVBoxLayout(central)
+        root_layout.setContentsMargins(14, 14, 14, 0)
+        root_layout.setSpacing(10)
+        self.setCentralWidget(central)
 
-        folder_frame = ttk.Frame(self, padding=(10, 10, 10, 5))
-        folder_frame.grid(row=0, column=0, sticky="ew")
-        folder_frame.columnconfigure(1, weight=1)
+        header_layout = QVBoxLayout()
+        header_layout.setSpacing(2)
 
-        ttk.Label(folder_frame, text="Folder:").grid(
-            row=0, column=0, padx=(0, 8)
-        )
-        self.folder_entry = ttk.Entry(
-            folder_frame,
-            textvariable=self.folder_var,
-        )
-        self.folder_entry.grid(row=0, column=1, sticky="ew")
+        title = QLabel("MfPlugin")
+        title.setObjectName("Title")
+        header_layout.addWidget(title)
 
-        ttk.Button(
-            folder_frame,
-            text="Open",
-            command=self.open_folder_from_entry,
-        ).grid(row=0, column=2, padx=(8, 0))
+        subtitle = QLabel("Project-aware LLM workspace")
+        subtitle.setObjectName("Subtitle")
+        header_layout.addWidget(subtitle)
 
-        ttk.Button(
-            folder_frame,
-            text="Browse…",
-            command=self.browse_folder,
-        ).grid(row=0, column=3, padx=(8, 0))
+        root_layout.addLayout(header_layout)
 
-        ttk.Label(folder_frame, text="Model:").grid(
-            row=1,
-            column=0,
-            padx=(0, 8),
-            pady=(8, 0),
-        )
-        self.model_entry = ttk.Entry(
-            folder_frame,
-            textvariable=self.model_var,
-        )
-        self.model_entry.grid(
-            row=1,
-            column=1,
-            columnspan=3,
-            sticky="ew",
-            pady=(8, 0),
-        )
+        project_card = QFrame()
+        project_card.setObjectName("Card")
+        project_layout = QGridLayout(project_card)
+        project_layout.setContentsMargins(14, 14, 14, 14)
+        project_layout.setHorizontalSpacing(9)
+        project_layout.setVerticalSpacing(10)
+        project_layout.setColumnStretch(1, 1)
 
-        ttk.Label(folder_frame, text="Behaviors:").grid(
-            row=2,
-            column=0,
-            padx=(0, 8),
-            pady=(8, 0),
-        )
+        project_layout.addWidget(QLabel("Folder"), 0, 0)
 
-        self.behavior_button = ttk.Menubutton(
-            folder_frame,
-            textvariable=self.behavior_display_var,
+        self.folder_entry = QLineEdit(str(self.backend.root))
+        self.folder_entry.returnPressed.connect(self.open_folder_from_entry)
+        project_layout.addWidget(self.folder_entry, 0, 1)
+
+        self.open_button = QPushButton("Open")
+        self.open_button.clicked.connect(self.open_folder_from_entry)
+        project_layout.addWidget(self.open_button, 0, 2)
+
+        self.browse_button = QPushButton("Browse…")
+        self.browse_button.clicked.connect(self.browse_folder)
+        project_layout.addWidget(self.browse_button, 0, 3)
+
+        project_layout.addWidget(QLabel("Model"), 1, 0)
+
+        self.model_entry = QLineEdit(self.config_data.model)
+        project_layout.addWidget(self.model_entry, 1, 1, 1, 3)
+
+        project_layout.addWidget(QLabel("Behaviors"), 2, 0)
+
+        self.behavior_button = QToolButton()
+        self.behavior_button.setText("None")
+        self.behavior_button.setPopupMode(
+            QToolButton.ToolButtonPopupMode.InstantPopup
         )
-        self.behavior_button.grid(
-            row=2,
-            column=1,
-            columnspan=3,
-            sticky="ew",
-            pady=(8, 0),
+        self.behavior_button.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
         )
 
-        self.behavior_menu = tk.Menu(
-            self.behavior_button,
-            tearoff=False,
-        )
-        self.behavior_button.configure(menu=self.behavior_menu)
+        behavior_menu = QMenu(self.behavior_button)
+        self.behavior_button.setMenu(behavior_menu)
 
         if REGISTERED_BEHAVIORS:
             for behavior_name in REGISTERED_BEHAVIORS:
-                self.behavior_menu.add_checkbutton(
-                    label=behavior_name,
-                    variable=self.behavior_vars[behavior_name],
-                    command=self.update_behavior_label,
-                )
+                action = behavior_menu.addAction(behavior_name)
+                action.setCheckable(True)
+                action.toggled.connect(self.update_behavior_label)
+                self.behavior_actions[behavior_name] = action
         else:
-            self.behavior_menu.add_command(
-                label="No behaviors registered",
-                state="disabled",
-            )
-            self.behavior_button.configure(state="disabled")
+            action = behavior_menu.addAction("No behaviors registered")
+            action.setEnabled(False)
+            self.behavior_button.setEnabled(False)
 
-        files_frame = ttk.LabelFrame(
+        project_layout.addWidget(self.behavior_button, 2, 1, 1, 3)
+        root_layout.addWidget(project_card)
+
+        files_group = QGroupBox("Files and folders")
+        files_layout = QVBoxLayout(files_group)
+        files_layout.setContentsMargins(10, 16, 10, 10)
+        files_layout.setSpacing(8)
+
+        self.tree = QTreeWidget()
+        self.tree.setColumnCount(2)
+        self.tree.setHeaderLabels(["Selected", "Path"])
+        self.tree.setAlternatingRowColors(True)
+        self.tree.setRootIsDecorated(False)
+        self.tree.setUniformRowHeights(True)
+        self.tree.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self.tree.header().setSectionResizeMode(
+            0,
+            QHeaderView.ResizeMode.ResizeToContents,
+        )
+        self.tree.header().setSectionResizeMode(
+            1,
+            QHeaderView.ResizeMode.Stretch,
+        )
+        self.tree.itemChanged.connect(self._tree_item_changed)
+        self.tree.installEventFilter(self)
+        files_layout.addWidget(self.tree, 1)
+
+        selection_layout = QHBoxLayout()
+
+        self.select_all_button = QPushButton("Select all")
+        self.select_all_button.clicked.connect(self.select_all)
+        selection_layout.addWidget(self.select_all_button)
+
+        self.clear_selection_button = QPushButton("Clear selection")
+        self.clear_selection_button.clicked.connect(self.clear_selection)
+        selection_layout.addWidget(self.clear_selection_button)
+
+        self.refresh_button = QPushButton("Refresh")
+        self.refresh_button.clicked.connect(self.refresh_entries)
+        selection_layout.addWidget(self.refresh_button)
+
+        selection_layout.addStretch()
+
+        self.selection_label = QLabel("0 selected")
+        self.selection_label.setObjectName("Muted")
+        selection_layout.addWidget(self.selection_label)
+
+        files_layout.addLayout(selection_layout)
+        root_layout.addWidget(files_group, 3)
+
+        input_group = QGroupBox("Input / question")
+        input_layout = QVBoxLayout(input_group)
+        input_layout.setContentsMargins(10, 16, 10, 10)
+        input_layout.setSpacing(8)
+
+        template_layout = QHBoxLayout()
+        template_layout.addWidget(QLabel("Template"))
+
+        self.template_combo = QComboBox()
+        self.template_combo.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        self.template_combo.addItem("Select a template…", None)
+
+        for template_name in REGISTERED_TEMPLATES:
+            self.template_combo.addItem(template_name, template_name)
+
+        if not REGISTERED_TEMPLATES:
+            self.template_combo.setEnabled(False)
+
+        self.template_combo.activated.connect(self.apply_template)
+        template_layout.addWidget(self.template_combo, 1)
+        input_layout.addLayout(template_layout)
+
+        self.input_text = QPlainTextEdit()
+        self.input_text.setPlaceholderText(
+            "Ask a question or describe the requested changes…"
+        )
+        self.input_text.setLineWrapMode(
+            QPlainTextEdit.LineWrapMode.WidgetWidth
+        )
+        input_layout.addWidget(self.input_text)
+
+        root_layout.addWidget(input_group, 2)
+
+        controls = QHBoxLayout()
+        controls.setSpacing(8)
+
+        self.save_checkbox = QCheckBox("Save output into files")
+        controls.addWidget(self.save_checkbox)
+
+        self.clear_input_button = QPushButton("Clear input")
+        self.clear_input_button.clicked.connect(self.clear_input)
+        controls.addWidget(self.clear_input_button)
+
+        controls.addStretch()
+
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 0)
+        self.progress.setFixedWidth(140)
+        self.progress.setTextVisible(False)
+        self.progress.hide()
+        controls.addWidget(self.progress)
+
+        self.diff_button = QPushButton("Show changes")
+        self.diff_button.clicked.connect(self.show_last_change_diff)
+        controls.addWidget(self.diff_button)
+
+        self.revert_button = QPushButton("Revert last change")
+        self.revert_button.setObjectName("DangerButton")
+        self.revert_button.clicked.connect(self.revert_last_change)
+        controls.addWidget(self.revert_button)
+
+        self.submit_button = QPushButton("Submit")
+        self.submit_button.setObjectName("PrimaryButton")
+        self.submit_button.clicked.connect(self.submit)
+        controls.addWidget(self.submit_button)
+
+        root_layout.addLayout(controls)
+
+        self.status_label = QLabel("Ready")
+        self.status_label.setObjectName("StatusBar")
+        self.status_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        root_layout.addWidget(self.status_label)
+
+        self.submit_shortcut = QShortcut(
+            QKeySequence("Ctrl+Return"),
             self,
-            text="Files and folders",
-            padding=8,
         )
-        files_frame.grid(
-            row=1,
-            column=0,
-            sticky="nsew",
-            padx=10,
-            pady=5,
-        )
-        files_frame.columnconfigure(0, weight=1)
-        files_frame.rowconfigure(0, weight=1)
+        self.submit_shortcut.activated.connect(self.submit)
 
-        self.tree = ttk.Treeview(
-            files_frame,
-            columns=("selected", "path"),
-            show="headings",
-            selectmode="browse",
-        )
-        self.tree.heading("selected", text="Selected")
-        self.tree.heading("path", text="Path")
-        self.tree.column(
-            "selected",
-            width=80,
-            minwidth=70,
-            stretch=False,
-            anchor="center",
-        )
-        self.tree.column("path", width=800, anchor="w")
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if (
+            watched is self.tree
+            and event.type() == QEvent.Type.KeyPress
+            and event.key() in (Qt.Key.Key_Space, Qt.Key.Key_Return)
+        ):
+            item = self.tree.currentItem()
+            if item is not None:
+                next_state = (
+                    Qt.CheckState.Unchecked
+                    if item.checkState(0) == Qt.CheckState.Checked
+                    else Qt.CheckState.Checked
+                )
+                item.setCheckState(0, next_state)
+            return True
 
-        tree_scrollbar = ttk.Scrollbar(
-            files_frame,
-            orient="vertical",
-            command=self.tree.yview,
-        )
-        self.tree.configure(yscrollcommand=tree_scrollbar.set)
-
-        self.tree.grid(row=0, column=0, sticky="nsew")
-        tree_scrollbar.grid(row=0, column=1, sticky="ns")
-
-        self.tree.bind("<Button-1>", self.on_tree_click)
-        self.tree.bind("<space>", self.on_tree_space)
-        self.tree.bind("<Return>", self.on_tree_space)
-
-        selection_buttons = ttk.Frame(self, padding=(10, 0, 10, 5))
-        selection_buttons.grid(row=2, column=0, sticky="ew")
-
-        ttk.Button(
-            selection_buttons,
-            text="Select all",
-            command=self.select_all,
-        ).pack(side="left")
-        ttk.Button(
-            selection_buttons,
-            text="Clear selection",
-            command=self.clear_selection,
-        ).pack(side="left", padx=(8, 0))
-        ttk.Button(
-            selection_buttons,
-            text="Refresh",
-            command=self.refresh_entries,
-        ).pack(side="left", padx=(8, 0))
-
-        self.selection_label = ttk.Label(
-            selection_buttons,
-            text="0 selected",
-        )
-        self.selection_label.pack(side="right")
-
-        input_frame = ttk.LabelFrame(
-            self,
-            text="Input / question",
-            padding=8,
-        )
-        input_frame.grid(
-            row=3,
-            column=0,
-            sticky="nsew",
-            padx=10,
-            pady=5,
-        )
-        input_frame.columnconfigure(0, weight=1)
-        input_frame.rowconfigure(0, weight=1)
-
-        self.input_text = tk.Text(
-            input_frame,
-            wrap="word",
-            undo=True,
-            height=9,
-        )
-        input_scrollbar = ttk.Scrollbar(
-            input_frame,
-            orient="vertical",
-            command=self.input_text.yview,
-        )
-        self.input_text.configure(yscrollcommand=input_scrollbar.set)
-        self.input_text.grid(row=0, column=0, sticky="nsew")
-        input_scrollbar.grid(row=0, column=1, sticky="ns")
-
-        controls = ttk.Frame(self, padding=10)
-        controls.grid(row=4, column=0, sticky="ew")
-        controls.columnconfigure(2, weight=1)
-
-        self.save_checkbox = ttk.Checkbutton(
-            controls,
-            text="Save output into files",
-            variable=self.save_output_var,
-        )
-        self.save_checkbox.grid(row=0, column=0, sticky="w")
-
-        ttk.Button(
-            controls,
-            text="Clear input",
-            command=self.clear_input,
-        ).grid(row=0, column=1, padx=(12, 0))
-
-        self.progress = ttk.Progressbar(
-            controls,
-            mode="indeterminate",
-            length=150,
-        )
-        self.progress.grid(row=0, column=2, padx=15, sticky="e")
-
-        self.diff_button = ttk.Button(
-            controls,
-            text="Show changes",
-            command=self.show_last_change_diff,
-        )
-        self.diff_button.grid(row=0, column=3, padx=(0, 8))
-
-        self.revert_button = ttk.Button(
-            controls,
-            text="Revert last change",
-            command=self.revert_last_change,
-        )
-        self.revert_button.grid(row=0, column=4, padx=(0, 8))
-
-        self.submit_button = ttk.Button(
-            controls,
-            text="Submit",
-            style="Primary.TButton",
-            command=self.submit,
-        )
-        self.submit_button.grid(row=0, column=5)
-
-        status_bar = ttk.Label(
-            self,
-            textvariable=self.status_var,
-            relief="sunken",
-            anchor="w",
-            padding=(8, 4),
-        )
-        status_bar.grid(row=5, column=0, sticky="ew")
-
-        self.bind("<Control-Return>", lambda _event: self.submit())
+        return super().eventFilter(watched, event)
 
     def selected_behavior_names(self) -> list[str]:
         return [
             name
             for name in REGISTERED_BEHAVIORS
-            if self.behavior_vars[name].get()
+            if self.behavior_actions[name].isChecked()
         ]
 
-    def update_behavior_label(self) -> None:
+    def update_behavior_label(self, _checked: bool = False) -> None:
         selected = self.selected_behavior_names()
 
         if not selected:
@@ -316,197 +560,233 @@ class MfApplication(tk.Tk):
         else:
             label = f"{len(selected)} behaviors selected"
 
-        self.behavior_display_var.set(label)
+        self.behavior_button.setText(label)
+
+    def apply_template(self, index: int) -> None:
+        """Copy the selected template into the editable input field."""
+        template_name = self.template_combo.itemData(index)
+        if not isinstance(template_name, str):
+            return
+
+        content = REGISTERED_TEMPLATES.get(template_name)
+        if content is None:
+            return
+
+        self.input_text.setPlainText(content.strip())
+        self.input_text.setFocus()
+        self.set_status(f"Loaded template: {template_name}")
 
     def browse_folder(self) -> None:
-        selected = filedialog.askdirectory(
-            parent=self,
-            initialdir=self.folder_var.get() or os.getcwd(),
-            title="Choose project folder",
+        selected = QFileDialog.getExistingDirectory(
+            self,
+            "Choose project folder",
+            self.folder_entry.text().strip() or os.getcwd(),
         )
         if selected:
-            self.folder_var.set(selected)
+            self.folder_entry.setText(selected)
             self.open_folder_from_entry()
 
     def open_folder_from_entry(self) -> None:
         if self.busy:
             return
 
-        folder = self.folder_var.get().strip()
+        folder = self.folder_entry.text().strip()
         try:
             backend = MfBackend(folder, self.config_data)
         except Exception as error:
-            messagebox.showerror(
-                "Invalid folder",
-                str(error),
-                parent=self,
-            )
+            QMessageBox.critical(self, "Invalid folder", str(error))
             return
 
         self.backend = backend
-        self.folder_var.set(str(self.backend.root))
+        self.folder_entry.setText(str(self.backend.root))
         self.load_folder_state()
 
     def load_folder_state(self) -> None:
         try:
             history = self.backend.load_history()
             self.checked_paths = set(history["selected_files"])
-            self.save_output_var.set(bool(history["save_output"]))
+            self.save_checkbox.setChecked(bool(history["save_output"]))
 
             selected_behaviors = set(
                 history.get("selected_behaviors", [])
             )
-            for name, variable in self.behavior_vars.items():
-                variable.set(name in selected_behaviors)
+            for name, action in self.behavior_actions.items():
+                action.blockSignals(True)
+                action.setChecked(name in selected_behaviors)
+                action.blockSignals(False)
             self.update_behavior_label()
 
-            self.input_text.delete("1.0", "end")
-            self.input_text.insert("1.0", history["user_input"])
+            self.input_text.setPlainText(history["user_input"])
 
             self.refresh_entries()
-            self.status_var.set(f"Loaded {self.backend.root}")
+            self.set_status(f"Loaded {self.backend.root}")
         except Exception as error:
-            messagebox.showerror(
-                "Load error",
-                str(error),
-                parent=self,
-            )
+            QMessageBox.critical(self, "Load error", str(error))
 
     def refresh_entries(self) -> None:
-        existing_checked = set(self.checked_paths)
-        entries = self.backend.list_entries()
-        entry_set = set(entries)
-
-        self.checked_paths = existing_checked.intersection(entry_set)
-        self.tree.delete(*self.tree.get_children())
-
-        for index, path in enumerate(entries):
-            kind = "Folder" if path.endswith("/") else "File"
-            marker = "☑" if path in self.checked_paths else "☐"
-            self.tree.insert(
-                "",
-                "end",
-                iid=f"entry-{index}",
-                values=(marker, path),
-                tags=(kind,),
-            )
-
-        self.tree.tag_configure("Folder", foreground="#345995")
-        self.update_selection_label()
-        self.status_var.set(f"{len(entries)} entries found")
-
-    def path_for_item(self, item: str) -> str | None:
-        if not item:
-            return None
-
-        values = self.tree.item(item, "values")
-        if len(values) < 2:
-            return None
-        return str(values[1])
-
-    def toggle_item(self, item: str) -> None:
-        path = self.path_for_item(item)
-        if path is None:
+        try:
+            existing_checked = set(self.checked_paths)
+            entries = self.backend.list_entries()
+        except Exception as error:
+            QMessageBox.critical(self, "Refresh error", str(error))
             return
 
-        if path in self.checked_paths:
-            self.checked_paths.remove(path)
-            marker = "☐"
-        else:
-            self.checked_paths.add(path)
-            marker = "☑"
+        entry_set = set(entries)
+        self.checked_paths = existing_checked.intersection(entry_set)
 
-        self.tree.set(item, "selected", marker)
-        self.tree.focus(item)
-        self.tree.selection_set(item)
+        self.tree.blockSignals(True)
+        self.tree.clear()
+
+        folder_color = QColor("#60a5fa")
+
+        for path in entries:
+            item = QTreeWidgetItem(["", path])
+            item.setData(0, Qt.ItemDataRole.UserRole, path)
+            item.setFlags(
+                item.flags()
+                | Qt.ItemFlag.ItemIsUserCheckable
+                | Qt.ItemFlag.ItemIsSelectable
+                | Qt.ItemFlag.ItemIsEnabled
+            )
+            item.setCheckState(
+                0,
+                (
+                    Qt.CheckState.Checked
+                    if path in self.checked_paths
+                    else Qt.CheckState.Unchecked
+                ),
+            )
+
+            if path.endswith("/"):
+                item.setForeground(1, folder_color)
+
+            self.tree.addTopLevelItem(item)
+
+        self.tree.blockSignals(False)
+        self.update_selection_label()
+        self.set_status(f"{len(entries)} entries found")
+
+    def _tree_item_changed(
+        self,
+        item: QTreeWidgetItem,
+        column: int,
+    ) -> None:
+        if column != 0:
+            return
+
+        path = item.data(0, Qt.ItemDataRole.UserRole)
+        if not path:
+            return
+
+        if item.checkState(0) == Qt.CheckState.Checked:
+            self.checked_paths.add(str(path))
+        else:
+            self.checked_paths.discard(str(path))
+
         self.update_selection_label()
 
-    def on_tree_click(self, event: tk.Event) -> str | None:
-        item = self.tree.identify_row(event.y)
-        region = self.tree.identify_region(event.x, event.y)
-
-        if item and region in {"cell", "tree"}:
-            self.toggle_item(item)
-            return "break"
-
-        return None
-
-    def on_tree_space(self, _event: tk.Event) -> str:
-        item = self.tree.focus()
-        if item:
-            self.toggle_item(item)
-        return "break"
-
     def select_all(self) -> None:
-        for item in self.tree.get_children():
-            path = self.path_for_item(item)
-            if path is not None:
-                self.checked_paths.add(path)
-                self.tree.set(item, "selected", "☑")
+        self.tree.blockSignals(True)
+        self.checked_paths.clear()
+
+        for index in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(index)
+            path = item.data(0, Qt.ItemDataRole.UserRole)
+            if path:
+                self.checked_paths.add(str(path))
+                item.setCheckState(0, Qt.CheckState.Checked)
+
+        self.tree.blockSignals(False)
         self.update_selection_label()
 
     def clear_selection(self) -> None:
         self.checked_paths.clear()
-        for item in self.tree.get_children():
-            self.tree.set(item, "selected", "☐")
+        self.tree.blockSignals(True)
+
+        for index in range(self.tree.topLevelItemCount()):
+            self.tree.topLevelItem(index).setCheckState(
+                0,
+                Qt.CheckState.Unchecked,
+            )
+
+        self.tree.blockSignals(False)
         self.update_selection_label()
 
     def clear_input(self) -> None:
-        self.input_text.delete("1.0", "end")
-        self.input_text.focus_set()
+        self.input_text.clear()
+        self.template_combo.setCurrentIndex(0)
+        self.input_text.setFocus()
 
     def update_selection_label(self) -> None:
         count = len(self.checked_paths)
         suffix = "" if count == 1 else "s"
-        self.selection_label.configure(
-            text=f"{count} selected item{suffix}"
+        self.selection_label.setText(
+            f"{count} selected item{suffix}"
         )
+
+    def set_status(self, status: str) -> None:
+        self.status_label.setText(status)
 
     def set_busy(self, busy: bool, status: str = "") -> None:
         self.busy = busy
-        state = "disabled" if busy else "normal"
+        enabled = not busy
 
-        self.submit_button.configure(state=state)
-        self.revert_button.configure(state=state)
-        self.diff_button.configure(state=state)
-        self.folder_entry.configure(state=state)
-        self.model_entry.configure(state=state)
-        self.save_checkbox.configure(state=state)
+        for widget in (
+            self.submit_button,
+            self.revert_button,
+            self.diff_button,
+            self.folder_entry,
+            self.model_entry,
+            self.save_checkbox,
+            self.open_button,
+            self.browse_button,
+            self.select_all_button,
+            self.clear_selection_button,
+            self.refresh_button,
+            self.clear_input_button,
+        ):
+            widget.setEnabled(enabled)
 
         if REGISTERED_BEHAVIORS:
-            self.behavior_button.configure(state=state)
+            self.behavior_button.setEnabled(enabled)
+
+        if REGISTERED_TEMPLATES:
+            self.template_combo.setEnabled(enabled)
+
+        self.tree.setEnabled(enabled)
+        self.input_text.setEnabled(enabled)
 
         if busy:
-            self.progress.start(10)
+            self.progress.show()
         else:
-            self.progress.stop()
+            self.progress.hide()
 
         if status:
-            self.status_var.set(status)
+            self.set_status(status)
 
     def submit(self) -> None:
         if self.busy:
             return
 
-        user_input = self.input_text.get("1.0", "end-1c")
+        user_input = self.input_text.toPlainText()
         if not user_input.strip():
-            messagebox.showwarning(
+            QMessageBox.warning(
+                self,
                 "Input required",
                 "Enter a question or instruction before submitting.",
-                parent=self,
             )
             return
 
-        model = self.model_var.get().strip()
+        model = self.model_entry.text().strip()
         request_config = replace(self.config_data, model=model)
 
         try:
             request_config.validate()
         except Exception as error:
-            messagebox.showerror(
+            QMessageBox.critical(
+                self,
                 "LLM configuration error",
                 str(error),
-                parent=self,
             )
             return
 
@@ -515,7 +795,7 @@ class MfApplication(tk.Tk):
 
         selected_files = sorted(self.checked_paths)
         selected_behaviors = self.selected_behavior_names()
-        save_output = self.save_output_var.get()
+        save_output = self.save_checkbox.isChecked()
 
         self.set_busy(True, "Calling the LLM…")
 
@@ -545,10 +825,13 @@ class MfApplication(tk.Tk):
                 selected_behaviors,
             )
         except Exception as error:
-            self.after(0, self._operation_failed, "LLM request failed", error)
+            self.signals.operation_failed.emit(
+                "LLM request failed",
+                str(error),
+            )
             return
 
-        self.after(0, self._submit_complete, result, save_output)
+        self.signals.submit_complete.emit(result, save_output)
 
     def _submit_complete(
         self,
@@ -566,7 +849,10 @@ class MfApplication(tk.Tk):
         if self.busy:
             return
 
-        self.set_busy(True, "Comparing files with the previous version…")
+        self.set_busy(
+            True,
+            "Comparing files with the previous version…",
+        )
 
         threading.Thread(
             target=self._diff_worker,
@@ -577,29 +863,53 @@ class MfApplication(tk.Tk):
         try:
             result = build_last_change_comparison(self.backend)
         except Exception as error:
-            self.after(
-                0,
-                self._operation_failed,
+            self.signals.operation_failed.emit(
                 "Show changes failed",
-                error,
+                str(error),
             )
             return
 
-        self.after(0, self._diff_complete, result)
+        self.signals.diff_complete.emit(result)
 
     def _diff_complete(self, result: DiffReport) -> None:
         self.set_busy(False, "Comparison completed")
-        show_diff_report(self, result)
+        self.show_result(
+            "Changes",
+            self._format_diff_report(result),
+            wrap=False,
+        )
+
+    def _format_diff_report(self, result: Any) -> str:
+        if isinstance(result, str):
+            return result
+
+        for attribute in ("text", "content", "diff", "report"):
+            value = getattr(result, attribute, None)
+            if isinstance(value, str):
+                return value
+
+        if is_dataclass(result):
+            return pprint.pformat(
+                asdict(result),
+                width=120,
+                sort_dicts=False,
+            )
+
+        return str(result)
 
     def revert_last_change(self) -> None:
         if self.busy:
             return
 
-        if not messagebox.askyesno(
+        answer = QMessageBox.question(
+            self,
             "Revert last change",
             "Restore files from the most recent .mfhist backup?",
-            parent=self,
-        ):
+            QMessageBox.StandardButton.Yes
+            | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
             return
 
         self.set_busy(True, "Reverting the last change…")
@@ -613,10 +923,13 @@ class MfApplication(tk.Tk):
         try:
             result = self.backend.revert_last_change()
         except Exception as error:
-            self.after(0, self._operation_failed, "Revert failed", error)
+            self.signals.operation_failed.emit(
+                "Revert failed",
+                str(error),
+            )
             return
 
-        self.after(0, self._revert_complete, result)
+        self.signals.revert_complete.emit(result)
 
     def _revert_complete(self, result: str) -> None:
         self.set_busy(False, "Revert completed")
@@ -626,87 +939,67 @@ class MfApplication(tk.Tk):
     def _operation_failed(
         self,
         title: str,
-        error: Exception,
+        error: str,
     ) -> None:
-        self.set_busy(False, str(error))
-        messagebox.showerror(title, str(error), parent=self)
+        self.set_busy(False, error)
+        QMessageBox.critical(self, title, error)
 
     def show_result(
         self,
         title: str,
         content: str,
-        wrap: str = "word",
+        wrap: bool = True,
     ) -> None:
-        window = tk.Toplevel(self)
-        window.title(title)
-        window.geometry("900x650")
-        window.minsize(500, 300)
-        window.transient(self)
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.resize(900, 650)
+        dialog.setMinimumSize(520, 320)
 
-        window.columnconfigure(0, weight=1)
-        window.rowconfigure(0, weight=1)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
 
-        text = tk.Text(
-            window,
-            wrap=wrap,
-            padx=10,
-            pady=10,
-            font=(
-                "TkFixedFont"
-                if wrap == "none"
-                else "TkDefaultFont"
-            ),
-        )
-        vertical = ttk.Scrollbar(
-            window,
-            orient="vertical",
-            command=text.yview,
-        )
-        horizontal = ttk.Scrollbar(
-            window,
-            orient="horizontal",
-            command=text.xview,
-        )
-        text.configure(
-            yscrollcommand=vertical.set,
-            xscrollcommand=horizontal.set,
+        text = QPlainTextEdit()
+        text.setReadOnly(True)
+        text.setPlainText(content)
+        text.setLineWrapMode(
+            QPlainTextEdit.LineWrapMode.WidgetWidth
+            if wrap
+            else QPlainTextEdit.LineWrapMode.NoWrap
         )
 
-        text.grid(row=0, column=0, sticky="nsew")
-        vertical.grid(row=0, column=1, sticky="ns")
-        horizontal.grid(row=1, column=0, sticky="ew")
+        if not wrap:
+            text.setFont(
+                QFontDatabase.systemFont(
+                    QFontDatabase.SystemFont.FixedFont
+                )
+            )
 
-        text.insert("1.0", content)
-        text.configure(state="disabled")
+        layout.addWidget(text, 1)
 
-        button_frame = ttk.Frame(window, padding=8)
-        button_frame.grid(row=2, column=0, columnspan=2, sticky="ew")
+        button_layout = QHBoxLayout()
 
-        ttk.Button(
-            button_frame,
-            text="Copy",
-            command=lambda: self.copy_to_clipboard(content),
-        ).pack(side="left")
+        copy_button = QPushButton("Copy")
+        copy_button.clicked.connect(
+            lambda: QApplication.clipboard().setText(content)
+        )
+        button_layout.addWidget(copy_button)
 
-        ttk.Button(
-            button_frame,
-            text="Close",
-            command=window.destroy,
-        ).pack(side="right")
+        button_layout.addStretch()
 
-        window.bind("<Escape>", lambda _event: window.destroy())
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(dialog.accept)
+        button_layout.addWidget(close_button)
 
-    def copy_to_clipboard(self, content: str) -> None:
-        self.clipboard_clear()
-        self.clipboard_append(content)
-        self.update()
+        layout.addLayout(button_layout)
+        dialog.exec()
 
 
 def parse_arguments() -> argparse.Namespace:
     environment = MfConfig.from_environment()
 
     parser = argparse.ArgumentParser(
-        description="Standalone Tkinter implementation of MfPlugin."
+        description="Standalone PyQt implementation of MfPlugin."
     )
     parser.add_argument(
         "folder",
@@ -741,27 +1034,26 @@ def choose_initial_folder(folder: str | None) -> str | None:
     if folder:
         return str(Path(folder).expanduser())
 
-    chooser = tk.Tk()
-    chooser.withdraw()
-
-    try:
-        selected = filedialog.askdirectory(
-            parent=chooser,
-            initialdir=os.getcwd(),
-            title="Choose project folder",
-        )
-    finally:
-        chooser.destroy()
-
+    selected = QFileDialog.getExistingDirectory(
+        None,
+        "Choose project folder",
+        os.getcwd(),
+    )
     return selected or None
 
 
 def main() -> None:
     arguments = parse_arguments()
-    folder = choose_initial_folder(arguments.folder)
 
+    application = QApplication([])
+    application.setApplicationName("MfPlugin")
+    application.setStyle("Fusion")
+    application.setStyleSheet(DARK_STYLESHEET)
+
+    folder = choose_initial_folder(arguments.folder)
     if not folder:
         return
+
     config = MfConfig(
         url=arguments.url,
         api_key=arguments.api_key,
@@ -770,19 +1062,17 @@ def main() -> None:
     )
 
     try:
-        application = MfApplication(folder, config)
+        window = MfApplication(folder, config)
     except Exception as error:
-        error_root = tk.Tk()
-        error_root.withdraw()
-        messagebox.showerror(
+        QMessageBox.critical(
+            None,
             "MfPlugin startup error",
             str(error),
-            parent=error_root,
         )
-        error_root.destroy()
         return
 
-    application.mainloop()
+    window.show()
+    application.exec()
 
 
 if __name__ == "__main__":

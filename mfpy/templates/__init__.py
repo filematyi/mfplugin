@@ -1,0 +1,1 @@
+"""Editable input templates for MfPlugin."""
