@@ -31,18 +31,12 @@ Check Vim support:
 :echo has('python3')
 ```
 
-Install the Python dependency:
-
-```sh
-python3 -m pip install requests
-```
-
 ## Installation
 
 Using vim-plug:
 
 ```vim
-Plug 'filematyi/mfplugin'
+Plug 'filematyi/mfplugin', {'do': 'make install'}
 ```
 
 Then run:
@@ -94,14 +88,11 @@ blacklist for common generated or local-only directories.
 Open MfPlugin in the current working directory:
 
 ```vim
-:Mf
+:Mfpy
 ```
 
 Open MfPlugin for a specific directory:
 
-```vim
-:Mf /path/to/project
-```
 
 Typical workflow:
 
