@@ -11,4 +11,7 @@ Guideline:
     - avoid to use try..except all the time, replace it with better error handling
     - avoid highly nested implementation
     - always use full imports not relative paths
+    - When you implement a wrapper on a 3rd party service e.g. sql database, consider to implement an interface
+    to enable multiple sources. Examples: 1. database could be noSQL, postgre, azure SQL etc.
+    2. Files can be local filesystem, azure storage blob, aws s3.
 """
