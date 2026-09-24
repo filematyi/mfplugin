@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Collection
 
-from ..schemas import HistoryData
+from mfpy.schemas import HistoryData
 
 
 class HistoryService:
@@ -37,11 +37,12 @@ class HistoryService:
     def default_history() -> HistoryData:
         """Return an empty normalized history."""
         return {
-            "version": 3,
+            "version": 4,
             "user_input": "",
             "selected_files": [],
             "selected_behaviors": [],
             "save_output": False,
+            "last_result": "",
             "last_change": {
                 "changed_at": "",
                 "files": [],
@@ -91,6 +92,13 @@ class HistoryService:
             value.get("selected_behaviors", [])
         )
         history["save_output"] = bool(value.get("save_output", False))
+
+        last_result = value.get("last_result", "")
+        history["last_result"] = (
+            last_result
+            if isinstance(last_result, str)
+            else str(last_result)
+        )
 
         last_change = value.get("last_change", {})
         if isinstance(last_change, dict):

@@ -1,6 +1,6 @@
-# MfPlugin Tkinter application
+# MfPlugin PyQt application
 
-This folder contains a standalone Python/Tkinter implementation of the Vim
+This folder contains a standalone Python/PyQt implementation of the Vim
 plugin.
 
 ## Features
@@ -15,37 +15,29 @@ plugin.
 - Retries rate-limited and server-error responses.
 - Can parse file blocks from an LLM response and save them under the selected
   project folder.
+- Stores the latest result popup content in `.mfhist`.
+- Can reopen the latest result using the **Show last result** button.
 - Stores original file contents in `.mfhist`.
 - Can revert the most recent saved-file operation.
-- Performs network and revert operations on background threads so the Tkinter
+- Performs network and revert operations on background threads so the PyQt
   interface remains responsive.
 
 ## Requirements
 
-Python 3.9 or newer is recommended. Tkinter must be available in the Python
+Python 3.9 or newer is recommended. PyQt6 must be available in the Python
 installation.
 
-Install the HTTP dependency:
+Install the dependencies:
 
-```bash
 python -m pip install -r mfpy/requirements.txt
-```
-
-On Debian or Ubuntu, Tkinter can be installed with:
-
-```bash
-sudo apt install python3-tk
-```
 
 ## Configuration
 
 Configure the LLM endpoint with environment variables:
 
-```bash
 export MFPLUGIN_URL=""
 export MFPLUGIN_API_KEY=""
 export MFPLUGIN_MODEL="gpt-56-sol"
-```
 
 The values can also be supplied as command-line options.
 
@@ -53,25 +45,19 @@ The values can also be supplied as command-line options.
 
 Run with a project folder:
 
-```bash
 python -m mfpy /path/to/project
-```
 
 Run without a folder to open the folder chooser:
 
-```bash
 python -m mfpy
-```
 
 Pass the LLM configuration directly:
 
-```bash
 python -m mfpy /path/to/project \
   --url "https://example.com/v1/responses" \
   --api-key "your-api-key" \
   --model "your-model"
-```
 
 The application writes `.mfhist` inside the selected project folder. This file
-contains the UI state and the backup required by the Revert last change
-button.
+contains the UI state, the latest result popup content, and the backup required
+by the **Revert last change** button.

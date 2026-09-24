@@ -31,6 +31,7 @@ class HistoryData(TypedDict):
     selected_files: list[str]
     selected_behaviors: list[str]
     save_output: bool
+    last_result: str
     last_change: LastChange
 
 

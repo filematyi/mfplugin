@@ -5,10 +5,10 @@ from __future__ import annotations
 import time
 from collections.abc import Iterable
 
-from .file_change_service import FileChangeService
-from .history_service import HistoryService
-from .llm_service import LlmService
-from .prompt_service import PromptService
+from mfpy.services.file_change_service import FileChangeService
+from mfpy.services.history_service import HistoryService
+from mfpy.services.llm_service import LlmService
+from mfpy.services.prompt_service import PromptService
 
 
 class WorkflowService:
@@ -60,12 +60,13 @@ class WorkflowService:
             normalized_behaviors,
         )
         response = self.llm.send(prompt)
+
         if not save_output:
-            return response
+            return self._persist_result(response)
 
         mapping = self.file_changes.extract_files(response)
         if not mapping:
-            return (
+            return self._persist_result(
                 "No file blocks found in the response. "
                 "No files were updated."
             )
@@ -92,7 +93,15 @@ class WorkflowService:
             self.history.write(history)
             self.file_changes.write_files(files_to_write)
 
-        return self._format_write_result(files_to_write, skipped)
+        result = self._format_write_result(files_to_write, skipped)
+        return self._persist_result(result)
+
+    def _persist_result(self, result: str) -> str:
+        """Persist the latest popup content and return it unchanged."""
+        history = self.history.load()
+        history["last_result"] = result
+        self.history.write(history)
+        return result
 
     @staticmethod
     def _format_write_result(

@@ -495,6 +495,10 @@ class MfApplication(QMainWindow):
         self.progress.hide()
         controls.addWidget(self.progress)
 
+        self.last_result_button = QPushButton("Show last result")
+        self.last_result_button.clicked.connect(self.show_last_result)
+        controls.addWidget(self.last_result_button)
+
         self.diff_button = QPushButton("Show changes")
         self.diff_button.clicked.connect(self.show_last_change_diff)
         controls.addWidget(self.diff_button)
@@ -735,6 +739,7 @@ class MfApplication(QMainWindow):
             self.submit_button,
             self.revert_button,
             self.diff_button,
+            self.last_result_button,
             self.folder_entry,
             self.model_entry,
             self.save_checkbox,
@@ -844,6 +849,31 @@ class MfApplication(QMainWindow):
             self.refresh_entries()
 
         self.show_result("Results", result)
+
+    def show_last_result(self) -> None:
+        """Load and display the latest saved popup content."""
+        if self.busy:
+            return
+
+        try:
+            result = self.backend.load_history().get("last_result", "")
+        except Exception as error:
+            QMessageBox.critical(
+                self,
+                "Load last result failed",
+                str(error),
+            )
+            return
+
+        if not isinstance(result, str) or not result:
+            QMessageBox.information(
+                self,
+                "Last result",
+                "No saved result found in .mfhist.",
+            )
+            return
+
+        self.show_result("Last result", result)
 
     def show_last_change_diff(self) -> None:
         if self.busy:
